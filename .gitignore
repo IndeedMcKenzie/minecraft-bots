@@ -1,0 +1,9 @@
+# Dependencias (se reinstalan con: npm install)
+node_modules/
+
+# Datos de tu mundo: casas de los bots y almacén (coordenadas)
+data/
+
+# Logs y perfiles
+*.log
+*.cpuprofile

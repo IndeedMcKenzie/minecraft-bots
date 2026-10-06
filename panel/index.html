@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bots Minecraft</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-2: #f0f1f4;
+    --border: #dde0e6;
+    --text: #1d2129;
+    --muted: #677085;
+    --accent: #2f6fdb;
+    --ok: #1f9d55;
+    --warn: #c98a00;
+    --err: #d33c3c;
+    --idle: #9aa2b1;
+    --health: #e0464e;
+    --food: #c8822a;
+    --log-bg: #ffffff;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171c;
+      --surface: #1e2128;
+      --surface-2: #262a33;
+      --border: #323743;
+      --text: #e6e8ee;
+      --muted: #949cad;
+      --accent: #5b93f0;
+      --ok: #3cc47a;
+      --warn: #e7b23a;
+      --err: #f06565;
+      --idle: #6c7486;
+      --health: #f0646b;
+      --food: #e2a04c;
+      --log-bg: #181a20;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  /* Sin esto, reglas como .overlay { display: grid } anulan el atributo hidden */
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .server { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex: none; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+  .dot.warn { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.err { background: var(--err); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  button {
+    font: inherit;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.busy { opacity: .6; cursor: progress; pointer-events: none; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--err); }
+  button.danger.confirm { background: var(--err); border-color: var(--err); color: #fff; }
+
+  main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 20px 20px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color .2s;
+  }
+  .card.problem { border-color: color-mix(in srgb, var(--err) 60%, var(--border)); }
+  .card-head { display: flex; align-items: center; gap: 10px; }
+  .card-head .emoji { font-size: 22px; }
+  .card-head .name { font-weight: 600; font-size: 15px; }
+  .card-head .user { color: var(--muted); font-size: 12px; }
+  .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+
+  .activity {
+    font-size: 13px;
+    background: var(--surface-2);
+    border-radius: 7px;
+    padding: 6px 9px;
+    min-height: 32px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .activity .ago { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .issue { color: var(--err); font-size: 12px; overflow-wrap: anywhere; }
+  .warn-full {
+    color: var(--warn);
+    font-size: 12px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+    border-radius: 7px;
+    padding: 5px 9px;
+  }
+
+  .bar-row { display: grid; grid-template-columns: 18px 1fr 42px; align-items: center; gap: 8px; font-size: 12px; }
+  .bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; width: 0; border-radius: 4px; transition: width .4s; }
+  .bar.health > span { background: var(--health); }
+  .bar.food > span { background: var(--food); }
+  .bar-row .num { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .facts { display: grid; grid-template-columns: 18px 1fr; gap: 3px 8px; font-size: 13px; }
+  .facts .v { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .facts .v.low { color: var(--warn); font-weight: 600; }
+  .deposit { font-size: 12px; color: var(--muted); }
+  .deposit b { color: var(--text); font-weight: 600; }
+  .items { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11.5px; }
+  .chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+  .chip.kept { color: var(--muted); border-style: dashed; }
+
+  .card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+
+  .logs {
+    flex: 1;
+    min-height: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .logs-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logs-head .title { font-weight: 600; margin-right: 6px; }
+  .tab { padding: 4px 10px; border-radius: 6px; }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .log-list {
+    flex: 1;
+    overflow: auto;
+    background: var(--log-bg);
+    font: 12.5px/1.5 Consolas, "Cascadia Mono", ui-monospace, monospace;
+    padding: 6px 0;
+  }
+  .log { padding: 1px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .log .time { color: var(--muted); margin-right: 8px; }
+  .log.warn { color: var(--warn); }
+  .log.error { color: var(--err); }
+  .empty { color: var(--muted); padding: 12px; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--bg);
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    max-width: calc(100% - 32px);
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  .toast.error { background: var(--err); color: #fff; }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    display: grid;
+    place-items: center;
+    text-align: center;
+    font-size: 15px;
+    padding: 20px;
+  }
+  .overlay strong { display: block; font-size: 18px; margin-bottom: 6px; }
+
+  @media (max-width: 600px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Bots Minecraft</h1>
+    <div class="server"><span class="dot" id="server-dot"></span><span id="server-text">Comprobando servidor…</span></div>
+    <span class="meta" id="meta"></span>
+    <div class="spacer"></div>
+    <div class="actions">
+      <button class="primary" data-all="start">▶ Iniciar todos</button>
+      <button data-all="stop">■ Detener todos</button>
+      <button class="danger" id="shutdown">⏻ Apagar</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="cards" id="cards"></section>
+
+    <section class="logs">
+      <div class="logs-head">
+        <span class="title">Registro</span>
+        <button class="tab active" data-filter="all">Todos</button>
+        <button class="tab" data-filter="woodcutter">🪓 Leñador</button>
+        <button class="tab" data-filter="miner">⛏️ Minero</button>
+        <button class="tab" data-filter="farmer">🌾 Granjero</button>
+        <button class="tab" data-filter="fisher">🎣 Pescador</button>
+        <button class="tab" data-filter="organizer">🗂️ Organizador</button>
+        <button class="tab" data-filter="panel">Panel</button>
+      </div>
+      <div class="log-list" id="log-list"><div class="empty">Esperando registros…</div></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <div class="overlay" id="overlay" hidden></div>
+
+<script>
+const MAX_LOGS = 500
+const STATUS = {
+  online:       { text: 'Activo',          dot: 'ok'   },
+  connecting:   { text: 'Conectando…',     dot: 'warn' },
+  reconnecting: { text: 'Reconectando…',   dot: 'warn' },
+  stopped:      { text: 'Detenido',        dot: ''     },
+}
+
+let logs = []
+let filter = 'all'
+let lastState = null
+const cardEls = {}
+
+// ── Utilidades ──────────────────────────────────────────────
+const $ = (sel, root = document) => root.querySelector(sel)
+
+function fmtTime(t) {
+  return new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+function ago(t) {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000))
+  if (s < 60) return `hace ${s} s`
+  if (s < 3600) return `hace ${Math.floor(s / 60)} min`
+  return `hace ${Math.floor(s / 3600)} h`
+}
+function fmtPos(p) { return p ? `(${p.x}, ${p.y}, ${p.z})` : '—' }
+function prettyItem(name) { return name.replace(/_/g, ' ') }
+
+let toastTimer
+function toast(msg, isError = false) {
+  const el = $('#toast')
+  el.textContent = msg
+  el.classList.toggle('error', isError)
+  el.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { el.hidden = true }, 3500)
+}
+
+async function post(url) {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'X-Panel': '1' } })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data.ok === false) toast(data.error || `Error ${res.status}`, true)
+    else if (data.message) toast(data.message)
+    return data
+  } catch {
+    toast('No se pudo contactar con el panel', true)
+  }
+}
+
+// ── Tarjetas de bots ────────────────────────────────────────
+function createCard(b) {
+  const el = document.createElement('article')
+  el.className = 'card'
+  el.innerHTML = `
+    <div class="card-head">
+      <span class="emoji"></span>
+      <div><div class="name"></div><div class="user"></div></div>
+      <div class="status"><span class="dot"></span><span class="status-text"></span></div>
+    </div>
+    <div class="activity"><span class="act-text"></span><span class="ago"></span></div>
+    <div class="issue" hidden></div>
+    <div class="warn-full" hidden>📦 Cofres de casa llenos (máximo alcanzado o sin sitio para otro): vacía alguno o pon más</div>
+    <div class="bar-row" title="Vida"><span>❤️</span><div class="bar health"><span></span></div><span class="num hp"></span></div>
+    <div class="bar-row" title="Hambre"><span>🍗</span><div class="bar food"><span></span></div><span class="num fd"></span></div>
+    <div class="facts">
+      <span title="Posición">📍</span><span class="v pos"></span>
+      <span title="Inventario">🎒</span><span class="v slots"></span>
+      <span title="Casa">🏠</span><span class="v home"></span>
+    </div>
+    <div class="deposit"></div>
+    <div class="items"></div>
+    <div class="card-actions">
+      <button class="primary" data-act="start">▶ Iniciar</button>
+      <button data-act="stop">■ Detener</button>
+      <button data-act="restart">↻ Reiniciar</button>
+      <button data-act="home" title="Usar como casa el cofre más cercano al bot (8 bloques)">🏠 Fijar casa</button>
+      <button data-act="gohome" title="Dejar lo que está haciendo, volver a casa, guardar todo y seguir trabajando desde allí">🏡 Volver a casa</button>
+      <button data-act="give">🎁 Dar herramienta</button>
+      <button data-act="escape" title="Si está atascado: sube a la superficie y vuelve a casa; si no puede (o lo pulsas otra vez en menos de 10 min), /tp a casa">🆘 Rescatar</button>
+      <button data-act="organize" class="primary" title="Recoger de las casas de los demás bots y ordenar en el almacén ahora" hidden>🗂️ Organizar ahora</button>
+    </div>`
+  $('.emoji', el).textContent = b.emoji
+  $('.name', el).textContent = b.label
+  $('.user', el).textContent = b.username
+  el.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.classList.add('busy') // el /give tarda ~2 s en confirmarse
+      try { await post(`/api/bots/${b.key}/${btn.dataset.act}`) } finally { btn.classList.remove('busy') }
+    })
+  })
+  $('[data-act="give"]', el).title = b.gifts ? `Dar con /give: ${b.gifts} (el bot debe ser OP)` : 'Sin objetos configurados en config.js'
+  $('[data-act="organize"]', el).hidden = b.key !== 'organizer'
+  return el
+}
+
+function updateCard(el, b) {
+  const st = STATUS[b.status] || STATUS.stopped
+  const online = b.status === 'online'
+  const running = b.status !== 'stopped'
+
+  $('.status .dot', el).className = 'dot ' + st.dot
+  $('.status-text', el).textContent = st.text
+
+  $('.act-text', el).textContent = b.activity ? b.activity.text : (running ? 'Sin actividad todavía' : 'Bot detenido')
+  $('.ago', el).textContent = b.activity ? ' · ' + ago(b.activity.t) : ''
+
+  const showIssue = !online && running && b.issue
+  const issueEl = $('.issue', el)
+  issueEl.hidden = !showIssue
+  issueEl.textContent = showIssue ? b.issue : ''
+  el.classList.toggle('problem', !!showIssue)
+  $('.warn-full', el).hidden = !b.homeFull
+
+  $('.bar.health > span', el).style.width = online ? `${(b.health / 20) * 100}%` : '0'
+  $('.bar.food > span', el).style.width = online ? `${(b.food / 20) * 100}%` : '0'
+  $('.hp', el).textContent = online ? `${b.health}/20` : '—'
+  $('.fd', el).textContent = online ? `${b.food}/20` : '—'
+
+  $('.pos', el).textContent = fmtPos(b.pos)
+  const slots = $('.slots', el)
+  slots.textContent = online ? `${b.freeSlots} huecos libres` : '—'
+  slots.classList.toggle('low', online && b.freeSlots <= 3)
+  $('.home', el).textContent = b.home
+    ? fmtPos(b.home) + (b.homeChests ? ` · ${b.homeChests}/${b.maxChests} cofres` : '')
+    : 'sin casa'
+  renderItems($('.items', el), b.items)
+
+  const dep = $('.deposit', el)
+  if (!online) dep.textContent = ''
+  else {
+    const last = b.lastDeposit
+      ? `último guardado ${ago(b.lastDeposit.t)} (${b.lastDeposit.stored} tipos)`
+      : 'aún no ha guardado en esta sesión'
+    dep.innerHTML = ''
+    const strong = document.createElement('b')
+    strong.textContent = b.pending > 0 ? `📦 ${b.pending} por guardar` : '📦 Nada por guardar'
+    dep.append(strong, document.createTextNode(' · ' + last))
+  }
+
+  $('[data-act="start"]', el).disabled = running
+  $('[data-act="stop"]', el).disabled = !running
+  $('[data-act="restart"]', el).disabled = !running
+  $('[data-act="home"]', el).disabled = !online
+  const goHome = $('[data-act="gohome"]', el)
+  goHome.disabled = !online || !b.home || b.goingHome || b.rescuing
+  goHome.textContent = b.goingHome ? '🏡 Yendo a casa…' : '🏡 Volver a casa'
+  const rescue = $('[data-act="escape"]', el)
+  rescue.disabled = !online || b.rescuing || b.goingHome
+  rescue.textContent = b.rescuing ? '🆘 Rescatando…' : '🆘 Rescatar'
+  const organize = $('[data-act="organize"]', el)
+  organize.disabled = !online || !b.home || b.organizing
+  organize.textContent = b.organizing ? '🗂️ Organizando…' : '🗂️ Organizar ahora'
+  $('[data-act="give"]', el).disabled = !online || !b.gifts || $('[data-act="give"]', el).classList.contains('busy')
+}
+
+// Fichas de inventario: las de reserva (lo que se queda a propósito) van atenuadas con 🔒
+function renderItems(container, items) {
+  container.replaceChildren(...items.map(i => {
+    const chip = document.createElement('span')
+    chip.className = 'chip' + (i.kept >= i.count ? ' kept' : '')
+    let text = `${prettyItem(i.name)} ×${i.count}`
+    if (i.kept >= i.count) text = `🔒 ${text}`
+    else if (i.kept > 0) text += ` (🔒${i.kept})`
+    chip.textContent = text
+    chip.title = i.kept >= i.count ? 'Reserva: se lo queda al guardar'
+      : i.kept > 0 ? `Se queda ${i.kept} de reserva y guarda ${i.count - i.kept}` : 'Lo guardará en casa'
+    return chip
+  }))
+}
+
+function renderState(state) {
+  lastState = state
+  const cards = $('#cards')
+  for (const b of state.bots) {
+    if (!cardEls[b.key]) {
+      cardEls[b.key] = createCard(b)
+      cards.appendChild(cardEls[b.key])
+    }
+    updateCard(cardEls[b.key], b)
+  }
+
+  const s = state.server
+  $('#server-dot').className = 'dot ' + (s.online === null ? 'warn' : s.online ? 'ok' : 'err')
+  $('#server-text').textContent = `Servidor ${s.host}:${s.port} · ` + (s.online === null ? 'comprobando…' : s.online ? 'en línea' : 'sin conexión')
+  $('#meta').textContent = `Panel activo ${ago(state.startedAt).replace('hace ', '')} · ${state.memoryMB} MB`
+}
+
+// ── Registro ────────────────────────────────────────────────
+function matches(entry) {
+  if (filter === 'all') return true
+  if (filter === 'panel') return !entry.bot
+  return entry.bot === filter
+}
+
+function logEl(entry) {
+  const div = document.createElement('div')
+  div.className = 'log ' + (entry.level === 'log' ? '' : entry.level)
+  const time = document.createElement('span')
+  time.className = 'time'
+  time.textContent = fmtTime(entry.t)
+  div.append(time, document.createTextNode(entry.text))
+  return div
+}
+
+function nearBottom(list) {
+  return list.scrollHeight - list.scrollTop - list.clientHeight < 40
+}
+
+function renderLogs() {
+  const list = $('#log-list')
+  list.replaceChildren()
+  const visible = logs.filter(matches)
+  if (visible.length === 0) {
+    list.innerHTML = '<div class="empty">No hay registros para este filtro.</div>'
+    return
+  }
+  const frag = document.createDocumentFragment()
+  visible.forEach(e => frag.appendChild(logEl(e)))
+  list.appendChild(frag)
+  list.scrollTop = list.scrollHeight
+}
+
+function appendLog(entry) {
+  logs.push(entry)
+  if (logs.length > MAX_LOGS) logs.shift()
+  if (!matches(entry)) return
+  const list = $('#log-list')
+  const stick = nearBottom(list)
+  $('.empty', list)?.remove()
+  list.appendChild(logEl(entry))
+  while (list.childElementCount > MAX_LOGS) list.firstElementChild.remove()
+  if (stick) list.scrollTop = list.scrollHeight
+}
+
+document.querySelectorAll('[data-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    filter = btn.dataset.filter
+    document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b === btn))
+    renderLogs()
+  })
+})
+
+// ── Botones generales ───────────────────────────────────────
+document.querySelectorAll('[data-all]').forEach(btn => {
+  btn.addEventListener('click', () => post(`/api/all/${btn.dataset.all}`))
+})
+
+const shutdownBtn = $('#shutdown')
+let confirmTimer
+shutdownBtn.addEventListener('click', async () => {
+  if (!shutdownBtn.classList.contains('confirm')) {
+    shutdownBtn.classList.add('confirm')
+    shutdownBtn.textContent = '¿Apagar bots y panel?'
+    confirmTimer = setTimeout(() => {
+      shutdownBtn.classList.remove('confirm')
+      shutdownBtn.textContent = '⏻ Apagar'
+    }, 4000)
+    return
+  }
+  clearTimeout(confirmTimer)
+  await post('/api/shutdown')
+})
+
+function showOverlay(title, text) {
+  const o = $('#overlay')
+  o.innerHTML = ''
+  const box = document.createElement('div')
+  const strong = document.createElement('strong')
+  strong.textContent = title
+  box.append(strong, document.createTextNode(text))
+  o.appendChild(box)
+  o.hidden = false
+}
+
+// ── Conexión en vivo ────────────────────────────────────────
+let shutDown = false
+function connect() {
+  const es = new EventSource('/api/events')
+  es.addEventListener('init', (ev) => {
+    const data = JSON.parse(ev.data)
+    logs = data.logs
+    renderLogs()
+    renderState(data.state)
+    $('#overlay').hidden = true
+  })
+  es.addEventListener('state', (ev) => renderState(JSON.parse(ev.data)))
+  es.addEventListener('log', (ev) => appendLog(JSON.parse(ev.data)))
+  es.addEventListener('shutdown', () => {
+    shutDown = true
+    es.close()
+    showOverlay('Panel apagado', 'Los bots se han detenido. Ya puedes cerrar esta ventana.')
+  })
+  es.onerror = () => {
+    if (shutDown) return
+    showOverlay('Sin conexión con el panel', 'Reintentando… Si cerraste el panel, ábrelo con abrir_panel.bat')
+  }
+}
+connect()
+
+// Refresca los "hace X s" aunque no llegue estado nuevo
+setInterval(() => { if (lastState) renderState(lastState) }, 1000)
+</script>
+</body>
+</html>

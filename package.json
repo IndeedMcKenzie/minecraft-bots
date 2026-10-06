@@ -1,0 +1,23 @@
+{
+  "name": "minecraft-bots",
+  "version": "1.0.0",
+  "description": "Bots de Mineflayer para servidor Paper 1.26.2 - Recolección, minería y agricultura",
+  "main": "index.js",
+  "scripts": {
+    "start": "node panel.js",
+    "start:separados": "node index.js",
+    "woodcutter": "node bots/woodcutter.js",
+    "miner": "node bots/miner.js",
+    "farmer": "node bots/farmer.js",
+    "fisher": "node bots/fisher.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.39.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-collectblock": "^1.6.0",
+    "mineflayer-tool": "^1.2.0",
+    "mineflayer-auto-eat": "^5.0.3",
+    "minecraft-data": "^3.68.0",
+    "vec3": "^0.1.10"
+  }
+}
