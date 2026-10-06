@@ -204,3 +204,10 @@ iniciar_bots.bat, detener_bots.bat, index.js   Lanzadores clásicos (3 bots, una
 ```
 
 Ejecutar un bot suelto (sin panel): `node bots/miner.js` (igual con los demás).
+
+---
+
+## 📄 Licencia
+
+Publicado bajo la licencia [MIT](LICENSE): puedes usar, copiar, modificar y distribuir este código
+libremente, siempre que mantengas el aviso de copyright y la licencia.

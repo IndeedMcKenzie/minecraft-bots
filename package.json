@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Bots de Mineflayer para servidor Paper 1.26.2 - Recolección, minería y agricultura",
   "main": "index.js",
+  "license": "MIT",
   "scripts": {
     "start": "node panel.js",
     "start:separados": "node index.js",
