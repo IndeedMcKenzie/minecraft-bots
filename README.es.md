@@ -220,8 +220,8 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
 - **OP y modo offline:** los bots necesitan OP para `/tp`, `/give`, `/summon` y las físicas. En modo offline,
   cualquiera que use el nombre de un bot hereda su OP. En servidores con más gente, usa un plugin de login
   (contraseña) o cambia los nombres de los bots en `config.js`.
-- **No mezcles** el panel con `iniciar_bots.bat` / `index.js`: los bots se expulsarían entre sí por login
-  duplicado. Además, esos lanzadores clásicos solo arrancan 3 bots.
+- **No ejecutes un bot suelto** (`node bots/<bot>.js`) con el panel abierto: entrarían dos con el mismo nombre
+  y se expulsarían entre sí en bucle.
 - **Recursos:** con los 6 bots, el proceso usa unos **450–550 MB de RAM** y en torno a **medio núcleo de CPU**
   cuando todos están activos. Lo que más gasta es el cálculo de rutas (`performance.pathfinderTickMs`).
   Cada animal del corral también es trabajo para el servidor: no subas mucho `rancher.maxCows`.
@@ -253,7 +253,6 @@ data/                  Datos de tu mundo (se crea solo, no se sube a git):
   almacen.json           categoría de cada cofre del organizador (respaldo de los carteles)
   corral.json            corrales construidos por el ganadero
   stats.json             estadísticas acumuladas
-iniciar_bots.bat, detener_bots.bat, index.js   Lanzadores clásicos (3 bots, una ventana cada uno)
 ```
 
 Ejecutar un bot suelto (sin panel): `node bots/miner.js` (igual con los demás).

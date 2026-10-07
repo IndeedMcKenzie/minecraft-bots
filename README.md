@@ -224,8 +224,8 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 - **OP & offline mode:** the bots need OP for `/tp`, `/give`, `/summon` and the physics fix. In offline mode,
   anyone using a bot's name inherits its OP. On shared servers, use a login (password) plugin or change the
   bot usernames in `config.js`.
-- **Don't mix** the panel with `iniciar_bots.bat` / `index.js`: the bots would kick each other (duplicate
-  login). Those legacy launchers also start only 3 bots.
+- **Don't run a bot on its own** (`node bots/<bot>.js`) while the panel is running: both would log in with the
+  same name and kick each other in a loop.
 - **Resources:** with all 6 bots the process uses about **450–550 MB of RAM** and around **half a CPU core**
   while everyone is busy. Path computation is the biggest cost (`performance.pathfinderTickMs`).
   Every animal in the pen also costs the server: don't raise `rancher.maxCows` too much.
@@ -257,7 +257,6 @@ data/                  Your world's data (created automatically, not committed):
   almacen.json           category of each organizer chest (backup of the signs)
   corral.json            pens built by the rancher
   stats.json             accumulated statistics
-iniciar_bots.bat, detener_bots.bat, index.js   Legacy launchers (3 bots, one window each)
 ```
 
 Run a single bot without the panel: `node bots/miner.js` (same for the others).

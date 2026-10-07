@@ -15,7 +15,6 @@
   },
   "scripts": {
     "start": "node panel.js",
-    "start:separados": "node index.js",
     "woodcutter": "node bots/woodcutter.js",
     "miner": "node bots/miner.js",
     "farmer": "node bots/farmer.js",
