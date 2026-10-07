@@ -387,6 +387,28 @@ function ensureHome(bot) {
   return true
 }
 
+/**
+ * Mueve objetos de `type` del inventario a HUECOS VACÍOS del contenedor abierto, sin juntarlos con
+ * las pilas que ya hay. Hace falta para objetos que ViaVersion/ViaBackwards marca con datos ocultos
+ * (p. ej. huevos con variante): el bot los ve iguales a los del cofre, el servidor no, y rechaza la
+ * mezcla devolviéndolos. Solo mueve pilas completas cuyo tamaño quepa en `maxCount`.
+ * Devuelve cuántos objetos movió.
+ */
+async function depositNoMerge(bot, window, type, maxCount = Infinity) {
+  let moved = 0
+  for (let s = window.inventoryStart; s < window.inventoryEnd; s++) {
+    const it = window.slots[s]
+    if (!it || it.type !== type || moved + it.count > maxCount) continue
+    const dest = window.firstEmptySlotRange(0, window.inventoryStart)
+    if (dest === null) throw new Error('destination full')
+    await bot.clickWindow(s, 0, 0)    // coger la pila
+    await bot.clickWindow(dest, 0, 0) // soltarla en el hueco vacío
+    moved += it.count
+    await sleep(100)
+  }
+  return moved
+}
+
 // Función segura para abrir cofres con timeout de 4 segundos
 async function safeOpenContainer(bot, block) {
   return new Promise((resolve, reject) => {
@@ -554,25 +576,35 @@ async function depositPass(bot, chests, keepItemNames, keepAmounts) {
       }
     }
 
-    try {
-      const container = await safeOpenContainer(bot, chestBlock)
+    // 1er intento normal (junta pilas); si el servidor lo devuelve, 2º intento en huecos vacíos
+    for (const noMerge of [false, true]) {
+      const before = getDepositableItems(bot, keepItemNames, keepAmounts).reduce((a, i) => a + i.count, 0)
+      if (before === 0) break
       let thisChestFull = false
-      // Recalcular lo pendiente justo antes de depositar (puede haber cambiado en el cofre anterior)
-      for (const item of getDepositableItems(bot, keepItemNames, keepAmounts)) {
-        try {
-          await container.deposit(item.type, null, item.count)
-          stored++
-          await sleep(150)
-        } catch (e) {
-          if (e.message && e.message.includes('destination full')) { thisChestFull = true; break }
-          problems.push(`${item.name}: ${e.message}`)
+      try {
+        const container = await safeOpenContainer(bot, chestBlock)
+        // Recalcular lo pendiente justo antes de depositar (puede haber cambiado en el cofre anterior)
+        for (const item of getDepositableItems(bot, keepItemNames, keepAmounts)) {
+          try {
+            if (noMerge) await depositNoMerge(bot, container, item.type, item.count)
+            else await container.deposit(item.type, null, item.count)
+            stored++
+            await sleep(150)
+          } catch (e) {
+            if (e.message && e.message.includes('destination full')) { thisChestFull = true; break }
+            problems.push(`${item.name}: ${e.message}`)
+          }
         }
+        try { container.close() } catch {}
+        await sleep(1200) // tiempo para que el servidor confirme o devuelva
+      } catch (err) {
+        problems.push(`cofre ${fmtPos(chestBlock.position)}: ${err.message}`)
+        break
       }
-      if (thisChestFull) fullChests++
-      try { container.close() } catch {}
-      await sleep(300)
-    } catch (err) {
-      problems.push(`cofre ${fmtPos(chestBlock.position)}: ${err.message}`)
+      const after = getDepositableItems(bot, keepItemNames, keepAmounts).reduce((a, i) => a + i.count, 0)
+      if (thisChestFull) { fullChests++; break }
+      if (after < before || after === 0) break // aceptado (aunque sea en parte)
+      if (!noMerge) console.warn(`[${bot.label}] ↩️ El servidor devolvió lo guardado en ${fmtPos(chestBlock.position)}; reintento en huecos vacíos...`)
     }
   }
   return { stored, fullChests, problems }
@@ -1043,6 +1075,7 @@ function fmtPos(p) {
 module.exports = {
   SCAFFOLD_ITEMS,
   activeBots,
+  depositNoMerge,
   teleportTo,
   waitUntil,
   getDepositableItems,

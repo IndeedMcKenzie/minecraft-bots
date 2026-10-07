@@ -23,15 +23,19 @@ const {
   teleportTo,
   waitUntil,
   activeBots,
+  depositNoMerge,
   sleep,
   fmtPos,
 } = require('./common')
 
 const orgCfg = Object.assign({
-  intervalMinutes: 20, warehouseRadius: 12, maxChests: 40, protect: [], categories: { Varios: ['*'] },
+  intervalMinutes: 20, warehouseRadius: 12, maxWarehouseRadius: 80, maxChests: 0,
+  protect: [], categories: { Varios: ['*'] }, trash: {}, recountEveryRounds: 6,
 }, cfg.organizer)
 const SOURCE_CHEST_RADIUS = (cfg.home && cfg.home.chestRadius) || 6
 const ASSIGN_FILE = path.join(__dirname, '..', 'data', 'almacen.json')
+const STOCK_FILE = path.join(__dirname, '..', 'data', 'almacen_stock.json')
+const RING_STEP = 6 // cuánto crece el radio del almacén cada vez que se queda sin hueco
 const SUPPLIES = ['chest', 'oak_sign'] // lo que usa para ampliar el almacén; no es carga
 const SUPPLY_STOCK = 4                  // cofres y carteles que se da al empezar cada ronda
 const FREE_SLOTS_RESERVE = 2            // huecos que deja libres al recoger, para que /give siempre quepa
@@ -42,6 +46,13 @@ function wildcardToRegex(pattern) {
 }
 const CATEGORY_RULES = Object.entries(orgCfg.categories).map(([name, patterns]) => ({ name, regexes: patterns.map(wildcardToRegex) }))
 const PROTECT_RULES = orgCfg.protect.map(wildcardToRegex)
+const TRASH_RULES = Object.entries(orgCfg.trash || {}).map(([pattern, cap]) => ({ regex: wildcardToRegex(pattern), cap }))
+
+/** Máximo a guardar de un objeto barato, o null si no es "excedente barato". */
+function trashCap(itemName) {
+  const rule = TRASH_RULES.find(r => r.regex.test(itemName))
+  return rule ? rule.cap : null
+}
 
 function categoryOf(itemName) {
   const rule = CATEGORY_RULES.find(c => c.regexes.some(r => r.test(itemName)))
@@ -128,6 +139,7 @@ async function organizeRoundInner(bot) {
 
   console.log(`[Organizador] 🗂️ Empiezo ronda: ${sources.length} casas que revisar.`)
   bot.roundStats = { collected: 0, sorted: 0 }
+  bot.fullCats = new Set() // categorías sin sitio en esta ronda: sus objetos se dejan en las casas
 
   // Antes de nada: vaciar lo que traiga de antes (y el buzón) y tener cofres/carteles de reserva
   if (!await teleportTo(bot, bot.home)) return
@@ -135,8 +147,24 @@ async function organizeRoundInner(bot) {
   await sortInbox(bot)
   await stockSupplies(bot)
 
-  if (cargo(bot).length > 0) {
-    console.warn(`[Organizador] ⛔ No puedo empezar: llevo ${cargoCount(bot)} objetos que no caben en el almacén. Revisa los avisos de arriba.`)
+  // Cada N rondas (y la primera vez) recontar los objetos baratos del almacén y tirar lo que sobre
+  if (TRASH_RULES.length > 0) {
+    const stock = loadStock()
+    const rounds = (stock ? stock.rounds || 0 : 0) + 1
+    if (!stock || rounds >= orgCfg.recountEveryRounds) {
+      await recountAndPurge(bot)
+    } else {
+      stock.rounds = rounds
+      saveStock(stock)
+    }
+  }
+
+  // Lo que no cupo (categorías llenas) se queda en el inventario; mientras quede sitio para recoger, seguir
+  if (bot.fullCats.size > 0) {
+    console.warn(`[Organizador] 📦 Categorías sin sitio en el almacén: ${[...bot.fullCats].join(', ')}. Dejo esos objetos en las casas y sigo con el resto.`)
+  }
+  if (bot.inventory.emptySlotCount() <= FREE_SLOTS_RESERVE + 2) {
+    console.warn(`[Organizador] ⛔ No puedo empezar: llevo ${cargoCount(bot)} objetos que no caben en el almacén y casi no me queda inventario.`)
     return
   }
 
@@ -155,9 +183,12 @@ async function organizeRoundInner(bot) {
       if (taken > 0) console.log(`[Organizador] 📥 Recogí ${taken} objetos en casa de ${src.label}.`)
       bot.roundStats.collected += taken
       if (cargo(bot).length > 0) await deliver(bot)
-      // Si no pudo ordenar lo recogido, seguir recogiendo solo empeoraría las cosas
-      if (cargo(bot).length > 0) {
-        console.warn(`[Organizador] ⛔ Paro la ronda: no consigo ordenar ${cargoCount(bot)} objetos (queda en mi inventario y en el buzón).`)
+      // Lo de categorías llenas no cabe en el almacén: devolverlo a la casa de la que salió
+      if (cargo(bot).some(i => bot.fullCats.has(categoryOf(i.name)))) await returnLeftovers(bot, src)
+      // Si no pudo ordenar algo de una categoría que SÍ tenía sitio, hay otro problema: no seguir recogiendo
+      const stuckCargo = cargo(bot).filter(i => !bot.fullCats.has(categoryOf(i.name)))
+      if (stuckCargo.length > 0 || bot.inventory.emptySlotCount() <= FREE_SLOTS_RESERVE + 2) {
+        console.warn(`[Organizador] ⛔ Paro la ronda: no consigo ordenar ${cargoCount(bot)} objetos (quedan en mi inventario).`)
         return finishRound(bot)
       }
       if (!more || taken === 0) break
@@ -318,6 +349,7 @@ async function collectFrom(bot, src) {
       const byType = new Map()
       for (const item of container.containerItems()) {
         if (isProtected(item.name)) continue
+        if (bot.fullCats && bot.fullCats.has(categoryOf(item.name))) continue // sin sitio en el almacén: dejarlo aquí
         byType.set(item.type, (byType.get(item.type) || 0) + item.count)
       }
       for (const [type, count] of byType) {
@@ -344,6 +376,42 @@ async function collectFrom(bot, src) {
   return { taken: cargoCount(bot) - before, more }
 }
 
+/** Devuelve a los cofres de una casa lo que no cupo en el almacén (categorías llenas). */
+async function returnLeftovers(bot, src) {
+  const before = cargoCount(bot)
+  if (before === 0 || !await teleportTo(bot, src.pos)) return
+  const chests = bot.findBlocks({ matching: chestIds(bot), point: src.pos, maxDistance: SOURCE_CHEST_RADIUS, count: 32 })
+    .map(p => bot.blockAt(p))
+    .filter(Boolean)
+
+  for (const chest of chests) {
+    if (cargo(bot).length === 0 || bot.stopped) break
+    if (!await approach(bot, chest)) continue
+    // 1º juntando pilas; si el servidor lo devuelve, en huecos vacíos
+    for (const noMerge of [false, true]) {
+      const n = cargoCount(bot)
+      if (n === 0) break
+      try {
+        const container = await openContainer(bot, chest)
+        const byType = new Map()
+        for (const i of cargo(bot)) byType.set(i.type, (byType.get(i.type) || 0) + i.count)
+        for (const [type, count] of byType) {
+          try {
+            if (noMerge) await depositNoMerge(bot, container, type)
+            else await container.deposit(type, null, count)
+            await sleep(150)
+          } catch { break } // cofre lleno: probar el siguiente
+        }
+        try { container.close() } catch {}
+        await sleep(1200)
+      } catch { break }
+      if (cargoCount(bot) < n) break
+    }
+  }
+  const returned = before - cargoCount(bot)
+  if (returned > 0) console.log(`[Organizador] ↩️ Devolví ${returned} objetos sin sitio en el almacén a la casa de ${src.label}.`)
+}
+
 // ── Ordenar en el almacén ────────────────────────────────────
 async function deliver(bot) {
   if (!bot.home || cargo(bot).length === 0) return
@@ -351,7 +419,99 @@ async function deliver(bot) {
   await sortIntoWarehouse(bot)
 }
 
+// ── Excedentes baratos ───────────────────────────────────────
+// Cuánto hay guardado de cada objeto barato (se suma al guardar y se recuenta cada N rondas)
+function loadStock() {
+  try { return JSON.parse(fs.readFileSync(STOCK_FILE, 'utf8')) } catch { return null }
+}
+
+function saveStock(stock) {
+  try {
+    fs.mkdirSync(path.dirname(STOCK_FILE), { recursive: true })
+    fs.writeFileSync(STOCK_FILE, JSON.stringify(stock, null, 2))
+  } catch {}
+}
+
+const nameCounts = items => items.reduce((acc, i) => { acc[i.name] = (acc[i.name] || 0) + i.count; return acc }, {})
+
+/** Destruye con /clear (requiere OP) la parte de la carga barata que pase de su máximo guardado. */
+async function trashSurplus(bot) {
+  if (TRASH_RULES.length === 0) return
+  const stock = loadStock() || { counts: {}, rounds: 0 }
+  const tossed = []
+  for (const [name, have] of Object.entries(nameCounts(cargo(bot)))) {
+    const cap = trashCap(name)
+    if (cap === null) continue
+    const excess = have - Math.max(0, cap - (stock.counts[name] || 0))
+    if (excess <= 0) continue
+    if (await clearItem(bot, name, excess)) tossed.push(`${name.replace(/_/g, ' ')} ×${excess}`)
+  }
+  if (tossed.length) console.log(`[Organizador] 🗑️ Tiré excedentes baratos: ${tossed.join(' · ')}`)
+}
+
+async function clearItem(bot, name, count) {
+  const countOf = () => bot.inventory.items().filter(i => i.name === name).reduce((a, i) => a + i.count, 0)
+  const before = countOf()
+  bot.chat(`/clear ${bot.username} minecraft:${name} ${count}`)
+  const ok = await waitUntil(() => countOf() < before, 3000)
+  if (!ok) {
+    console.warn(`[Organizador] No pude tirar ${name} con /clear. ¿Es OP? Ejecuta en la consola del servidor: op ${bot.username}`)
+    return false
+  }
+  const removed = before - countOf()
+  stats.add('organizer', 'tirados', removed)
+  stats.addDetail('tirados', name, removed)
+  return true
+}
+
+/**
+ * Recuenta en el almacén los objetos baratos y, si alguno pasa de su máximo, saca el sobrante de
+ * los cofres y lo tira (libera sitio). Solo abre cofres de categorías donde pueden estar esos objetos.
+ */
+async function recountAndPurge(bot) {
+  if (TRASH_RULES.length === 0) return
+  const warehouse = scanWarehouse(bot)
+  const trashNames = bot.registry.itemsArray.map(i => i.name).filter(n => trashCap(n) !== null)
+  const cats = new Set(trashNames.map(categoryOf).filter(Boolean).map(normalize))
+  const chests = [...warehouse.byCategory.entries()].filter(([k]) => cats.has(k)).flatMap(([, list]) => list)
+  console.log(`[Organizador] 🧮 Recuento de excedentes: revisando ${chests.length} cofres...`)
+
+  const running = {}
+  let purged = 0
+  for (const chest of chests) {
+    if (bot.stopped || bot.pendingCommand) return
+    if (!await approach(bot, chest)) continue
+    const taken = {}
+    try {
+      const container = await openContainer(bot, chest)
+      for (const item of container.containerItems()) {
+        const cap = trashCap(item.name)
+        if (cap === null) continue
+        running[item.name] = (running[item.name] || 0) + item.count
+        const over = Math.min(item.count, running[item.name] - cap)
+        if (over <= 0 || bot.inventory.emptySlotCount() <= FREE_SLOTS_RESERVE) continue
+        try {
+          await container.withdraw(item.type, null, over)
+          running[item.name] -= over
+          taken[item.name] = (taken[item.name] || 0) + over
+          await sleep(120)
+        } catch {}
+      }
+      try { container.close() } catch {}
+      await sleep(400)
+    } catch { continue }
+    for (const [name, n] of Object.entries(taken)) if (await clearItem(bot, name, n)) purged += n
+  }
+
+  const stock = { counts: {}, rounds: 0 }
+  for (const [name, n] of Object.entries(running)) stock.counts[name] = n
+  saveStock(stock)
+  console.log(`[Organizador] 🧮 Recuento hecho${purged ? `: tiré ${purged} objetos que sobraban en el almacén` : ''}.`)
+}
+
 async function sortIntoWarehouse(bot) {
+  await trashSurplus(bot)
+  const before = nameCounts(cargo(bot))
   const warehouse = scanWarehouse(bot)
   const summary = []
 
@@ -372,6 +532,19 @@ async function sortIntoWarehouse(bot) {
   if (summary.length) console.log(`[Organizador] 🗂️ Ordenado: ${summary.join(' · ')}`)
   const left = cargoCount(bot)
   if (left > 0) console.warn(`[Organizador] 📦 Me quedan ${left} objetos sin sitio en el almacén.`)
+
+  // Sumar al recuento de objetos baratos lo que se acaba de guardar
+  const after = nameCounts(cargo(bot))
+  const stock = loadStock() || { counts: {}, rounds: 0 }
+  let changed = false
+  for (const [name, n] of Object.entries(before)) {
+    const stored = n - (after[name] || 0)
+    if (stored > 0 && trashCap(name) !== null) {
+      stock.counts[name] = (stock.counts[name] || 0) + stored
+      changed = true
+    }
+  }
+  if (changed) saveStock(stock)
 }
 
 function cargoOfCategory(bot, cat) {
@@ -386,8 +559,11 @@ async function depositCategory(bot, cat, warehouse) {
       await depositVerified(bot, cat, chest)
     }
     if (cargoOfCategory(bot, cat).length === 0) return
-    // Sin cofre para esta categoría o todos llenos: crear uno nuevo
-    if (!await createCategoryChest(bot, cat, warehouse)) return
+    // Sin cofre para esta categoría o todos llenos: crear uno nuevo; si no se puede, la categoría está llena
+    if (!await createCategoryChest(bot, cat, warehouse)) {
+      if (bot.fullCats) bot.fullCats.add(cat)
+      return
+    }
   }
 }
 
@@ -403,6 +579,9 @@ async function depositVerified(bot, cat, chest) {
     const before = catCount(bot, cat)
     if (before === 0) return
     let chestFull = false
+    // Si el servidor devolvió el primer intento, en los siguientes no se juntan pilas
+    // (ver depositNoMerge: objetos con datos ocultos de ViaVersion, como los huevos)
+    const noMerge = tryN > 0
     try {
       const container = await openContainer(bot, chest)
       // Agrupar por tipo; deposit() rellena primero las pilas incompletas (compacta)
@@ -410,7 +589,8 @@ async function depositVerified(bot, cat, chest) {
       for (const i of cargoOfCategory(bot, cat)) byType.set(i.type, (byType.get(i.type) || 0) + i.count)
       for (const [type, count] of byType) {
         try {
-          await container.deposit(type, null, count)
+          if (noMerge) await depositNoMerge(bot, container, type)
+          else await container.deposit(type, null, count)
           await sleep(150)
         } catch (e) {
           if (e.message && e.message.includes('destination full')) { chestFull = true; break }
@@ -424,7 +604,7 @@ async function depositVerified(bot, cat, chest) {
     await sleep(1500) // tiempo para que el servidor confirme o devuelva los objetos
     if (catCount(bot, cat) < before) return // aceptado
     if (chestFull) return // estaba lleno de antes: no hay nada que reintentar
-    console.warn(`[Organizador] ↩️ El servidor devolvió lo que guardé en ${fmtPos(chest.position)}; reintento (${tryN + 1}/3)...`)
+    console.warn(`[Organizador] ↩️ El servidor devolvió lo que guardé en ${fmtPos(chest.position)}; reintento en huecos vacíos (${tryN + 1}/3)...`)
     await sleep(1000)
   }
 }
@@ -433,9 +613,20 @@ async function depositVerified(bot, cat, chest) {
  * Cofres del almacén y su categoría. La categoría sale del cartel encima (o en un lateral) del cofre;
  * si el cartel no se pudo leer, de lo guardado en data/almacen.json al crearlo.
  */
+// Radio actual del almacén: el inicial, o hasta el cofre más lejano que haya creado (crece al llenarse)
+function warehouseRadius(bot) {
+  let r = orgCfg.warehouseRadius
+  for (const key of Object.keys(loadAssignments())) {
+    const [x, y, z] = key.replace(/[()\s]/g, '').split(',').map(Number)
+    if ([x, y, z].some(Number.isNaN)) continue
+    r = Math.max(r, Math.ceil(new Vec3(x, y, z).distanceTo(bot.home)) + 1)
+  }
+  return Math.min(r, orgCfg.maxWarehouseRadius)
+}
+
 function scanWarehouse(bot) {
   const assigned = loadAssignments()
-  const positions = bot.findBlocks({ matching: chestIds(bot), point: bot.home, maxDistance: orgCfg.warehouseRadius, count: 300 })
+  const positions = bot.findBlocks({ matching: chestIds(bot), point: bot.home, maxDistance: warehouseRadius(bot), count: 5000 })
   const byCategory = new Map()
 
   for (const p of positions) {
@@ -479,8 +670,8 @@ function saveAssignment(pos, category) {
 
 // ── Ampliar el almacén ───────────────────────────────────────
 async function createCategoryChest(bot, cat, warehouse) {
-  if (warehouse.total >= orgCfg.maxChests) {
-    console.warn(`[Organizador] 📦 El almacén ya tiene el máximo de ${orgCfg.maxChests} cofres (organizer.maxChests en config.js).`)
+  if (orgCfg.maxChests > 0 && warehouse.total >= orgCfg.maxChests) {
+    console.warn(`[Organizador] 📦 El almacén ya tiene el máximo de ${orgCfg.maxChests} cofres (organizer.maxChests en config.js; 0 = ilimitado).`)
     return false
   }
   // Para recibir cofre y cartel con /give necesita huecos libres: si no los hay, usar el buzón de colchón
@@ -516,11 +707,11 @@ async function createCategoryChest(bot, cat, warehouse) {
     if (!warehouse.byCategory.has(normalize(cat))) warehouse.byCategory.set(normalize(cat), [])
     warehouse.byCategory.get(normalize(cat)).push(chest)
     warehouse.total++
-    console.log(`[Organizador] 🆕 Cofre nuevo para "${cat}" en ${fmtPos(spot)} (${warehouse.total}/${orgCfg.maxChests}).`)
+    console.log(`[Organizador] 🆕 Cofre nuevo para "${cat}" en ${fmtPos(spot)} (${warehouse.total}${orgCfg.maxChests > 0 ? '/' + orgCfg.maxChests : ''} cofres).`)
     stats.add('organizer', 'cofresCreados')
     return true
   }
-  console.warn(`[Organizador] 📦 No encontré hueco para un cofre nuevo de "${cat}" en el almacén.`)
+  console.warn(`[Organizador] 📦 No encontré hueco para un cofre nuevo de "${cat}" (ni ampliando el almacén hasta ${orgCfg.maxWarehouseRadius} bloques).`)
   return false
 }
 
@@ -567,15 +758,40 @@ async function giveSelf(bot, itemName, count = 1) {
  * cofres dobles de distinta categoría). Prioriza los cercanos a cofres de la misma categoría.
  */
 function findWarehouseSpots(bot, sameCategoryChests) {
+  // Empezar por el radio actual y, si no hay hueco, ampliar en anillos hasta maxWarehouseRadius
+  for (let R = warehouseRadius(bot); R <= orgCfg.maxWarehouseRadius; R += RING_STEP) {
+    const spots = warehouseSpotsWithin(bot, sameCategoryChests, R)
+    if (spots.length > 0) {
+      if (R > warehouseRadius(bot)) console.log(`[Organizador] 📐 Amplío el almacén hasta ${R} bloques de radio.`)
+      return spots
+    }
+  }
+  return []
+}
+
+// Zonas donde no se ponen cofres: casas de otros bots (si no, las usarían como suyas) y el corral
+function forbiddenZones(bot) {
+  const zones = sourceHomes(bot).map(h => ({ pos: h.pos, r: SOURCE_CHEST_RADIUS + 2 }))
+  try {
+    const r = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'home_rancher.json'), 'utf8'))
+    zones.push({ pos: new Vec3(r.x, r.y, r.z), r: ((cfg.rancher && cfg.rancher.penRadius) || 6) + 3, square: true })
+  } catch {}
+  return zones
+}
+
+function warehouseSpotsWithin(bot, sameCategoryChests, R) {
   const home = bot.home
-  const R = orgCfg.warehouseRadius
   const spots = []
+  const zones = forbiddenZones(bot)
+  const forbidden = p => zones.some(z => z.square
+    ? Math.abs(p.x - z.pos.x) <= z.r && Math.abs(p.z - z.pos.z) <= z.r
+    : p.distanceTo(z.pos) <= z.r)
 
   for (let dx = -R; dx <= R; dx += 2) {
     for (let dz = -R; dz <= R; dz += 3) {
-      for (let dy = -2; dy <= 2; dy++) {
+      for (let dy = -3; dy <= 3; dy++) {
         const p = home.offset(dx, dy, dz)
-        if (p.distanceTo(home) > R - 0.5 || p.equals(home)) continue
+        if (p.distanceTo(home) > R - 0.5 || p.equals(home) || forbidden(p)) continue
         const b = bot.blockAt(p)
         const above = bot.blockAt(p.offset(0, 1, 0))
         const below = bot.blockAt(p.offset(0, -1, 0))

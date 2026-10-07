@@ -154,7 +154,14 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
      (pickaxes, axes, hoes, shovels, swords, rods, shears). It waits if that bot is storing at that moment.
   3. Returns to the warehouse and puts each item **in its category chest**. Every deposit is verified and retried if the server rejects it.
   4. If a category has no chest or it's full, it **places a new chest with a sign on top** naming the category.
-- Chests are laid out **on a grid with aisles** and never touch (so they don't merge into double chests mixing categories). Max 40.
+- Chests are laid out **on a grid with aisles** and never touch (so they don't merge into double chests mixing categories).
+- **Unlimited warehouse** (`maxChests: 0`): when it runs out of room, the grid **grows in rings** up to
+  `maxWarehouseRadius` (80 blocks). It never places chests next to other bots' homes or inside the pen.
+  If a category doesn't fit, those items stay in the bots' homes and the rest keeps being sorted.
+- **Cheap surplus** (`organizer.trash`): for items like dirt, gravel, sticks, saplings or seeds it keeps at
+  most a set amount (e.g. 256 sticks) and **destroys the rest with `/clear`**. Every 6 rounds it recounts the
+  warehouse and discards what's over. Remove an item from the list to never discard it.
+- If the server rejects a deposit (happens with items ViaVersion tags, like eggs), it retries into empty slots.
 - **Categories:** Madera (wood), Minerales (ores), Piedra (stone), Cultivos (crops), Pesca (fish),
   Comida (food), Mobs and Varios (everything else). Edit them in `config.js` → `organizer.categories`
   (wildcards allowed: `*_log` = every log).
@@ -211,7 +218,7 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 | `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `chestRadius` 6, `autoChests`, `maxChests` 15 |
 | `farm` | `autoCreate` (till next to water), `searchWaterRadius` |
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
-| `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxChests` 40, `inbox`, `protect`, `categories` |
+| `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 80, `maxChests` 0 (unlimited), `inbox`, `protect`, `categories`, `trash` (cap per cheap item), `recountEveryRounds` 6 |
 | `fishing` | `searchRadius` 32 |
 | `rancher` | `penRadius` 6, `maxCows` 10, `minBreeders` 2, `breedCooldownMinutes` 5, `cycleSeconds` 15 |
 | `starterCommands` | Commands run on join (scale tweak for 1.21+ jump physics, needs OP) |

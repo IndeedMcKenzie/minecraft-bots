@@ -83,8 +83,20 @@ module.exports = {
   // en un almacén central (su casa), con un cofre con cartel por categoría.
   organizer: {
     intervalMinutes: 20,   // Cada cuánto hace una ronda (también hay un botón en el panel)
-    warehouseRadius: 12,   // Radio del almacén alrededor de su casa
-    maxChests: 40,         // Máximo de cofres que puede crear en el almacén
+    warehouseRadius: 12,   // Radio inicial del almacén alrededor de su casa (crece solo si se llena)
+    maxWarehouseRadius: 80, // Hasta dónde puede crecer (≈ zona que el bot tiene cargada desde su casa)
+    maxChests: 0,          // Máximo de cofres del almacén. 0 = ilimitado
+    // Excedentes baratos: se guarda como mucho esta cantidad de cada objeto; lo que sobre se destruye
+    // con /clear (requiere OP). * = cualquier texto. Para no tirar nunca algo, quítalo de la lista.
+    trash: {
+      'dirt': 128, 'gravel': 64, 'sand': 128,
+      'andesite': 64, 'diorite': 64, 'granite': 64, 'tuff': 64, 'calcite': 64,
+      'cobblestone': 1024, 'cobbled_deepslate': 512,
+      'stick': 256, '*_sapling': 64, 'mangrove_propagule': 64,
+      'wheat_seeds': 256, 'beetroot_seeds': 128,
+      'rotten_flesh': 64, 'poisonous_potato': 0, 'spider_eye': 64,
+    },
+    recountEveryRounds: 6, // Cada cuántas rondas recuenta lo guardado de esos objetos (por si tú sacas cosas)
     // Buzón: el cofre de su casa (si no tiene cartel) se vacía y se ordena en cada ronda, y lo usa de
     // colchón si se queda sin sitio. ¡Si ese cofre tiene cosas tuyas, las moverá! Por eso viene apagado.
     inbox: false,
@@ -126,7 +138,7 @@ module.exports = {
     miner:      { username: 'Bot_Minero',   home: null, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_pickaxe', count: 1 }] },
     farmer:     { username: 'Bot_Granjero', home: null, give: [{ item: 'diamond_hoe', count: 1 }, { item: 'wheat_seeds', count: 32 }] },
     fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 'tiny' }, // no explora: carga menos chunks
-    organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, viewDistance: 'tiny' }, // su casa es el almacén central (la eliges tú)
+    organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, pathfinderTickMs: 40 }, // su casa es el almacén central (la eliges tú)
     rancher:    { username: 'Bot_Ganadero', home: null, autoHome: false, viewDistance: 'tiny', give: [{ item: 'wheat', count: 64 }, { item: 'diamond_sword', count: 1 }] }, // su casa es el centro del corral (la eliges tú)
   },
 }

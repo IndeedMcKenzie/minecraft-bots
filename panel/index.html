@@ -352,6 +352,7 @@
       <div class="panel-card"><div class="card-title">⛏️ Minerales por tipo</div><div class="hbars" id="bd-minerales"></div></div>
       <div class="panel-card"><div class="card-title">🎣 Pesca</div><div class="hbars" id="bd-pesca"></div></div>
       <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>
+      <div class="panel-card"><div class="card-title">🗑️ Excedentes tirados</div><div class="hbars" id="bd-tirados"></div></div>
     </section>
   </main>
 
@@ -729,7 +730,7 @@ function renderStats() {
     { label: '🎣 Capturas de pesca', value: get('fisher', 'capturas') },
     { label: '🐄 Terneros nacidos', value: get('rancher', 'terneros'), sub: `${fmtNum(get('rancher', 'sacrificadas'))} sacrificadas` },
     { label: '📦 Objetos guardados', value: sumAll('guardados'), sub: `${fmtNum(sumAll('viajes'))} viajes a casa` },
-    { label: '🗂️ Objetos ordenados', value: get('organizer', 'ordenados'), sub: `${fmtNum(get('organizer', 'rondas'))} rondas del organizador` },
+    { label: '🗂️ Objetos ordenados', value: get('organizer', 'ordenados'), sub: `${fmtNum(get('organizer', 'rondas'))} rondas · ${fmtNum(get('organizer', 'tirados'))} excedentes tirados` },
   ]
   $('#kpis').replaceChildren(...kpis.map(k => {
     const el = document.createElement('div')
@@ -746,6 +747,7 @@ function renderStats() {
   renderHBars($('#bd-minerales'), det.minerales)
   renderHBars($('#bd-pesca'), det.pesca)
   renderHBars($('#bd-almacen'), det.almacen)
+  renderHBars($('#bd-tirados'), det.tirados)
 }
 
 function renderBotsTable(b, bots) {

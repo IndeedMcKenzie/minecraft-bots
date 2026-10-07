@@ -150,7 +150,14 @@ Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo par
      (picos, hachas, azadas, palas, espadas, cañas y tijeras). Espera si ese bot está guardando en ese momento.
   3. Vuelve al almacén y reparte cada objeto **en el cofre de su categoría**. Comprueba cada depósito y lo reintenta si el servidor lo rechaza.
   4. Si una categoría no tiene cofre o está llena, **coloca uno nuevo con un cartel encima** con su nombre.
-- Los cofres van **en cuadrícula con pasillos** y nunca pegados (así no se unen en cofres dobles mezclando categorías). Máximo 40.
+- Los cofres van **en cuadrícula con pasillos** y nunca pegados (así no se unen en cofres dobles mezclando categorías).
+- **Almacén ilimitado** (`maxChests: 0`): cuando no queda hueco, la cuadrícula **crece en anillos** hasta
+  `maxWarehouseRadius` (80 bloques). Nunca pone cofres junto a las casas de otros bots ni en el corral.
+  Si una categoría no cabe, deja esos objetos en las casas y sigue con el resto.
+- **Excedentes baratos** (`organizer.trash`): de objetos como tierra, grava, palos, brotes o semillas guarda
+  como mucho una cantidad (p. ej. 256 palos) y **destruye el resto con `/clear`**. Cada 6 rondas recuenta lo
+  guardado y tira lo que sobre dentro del almacén. Para no tirar nunca algo, quítalo de la lista.
+- Si el servidor rechaza un depósito (pasa con objetos que ViaVersion marca, como huevos), lo reintenta en huecos vacíos.
 - **Categorías:** Madera, Minerales, Piedra, Cultivos, Pesca, Comida, Mobs y Varios (todo lo demás).
   Se editan en `config.js` → `organizer.categories` (admite comodines: `*_log` = todos los troncos).
 - **Puedes ordenar a mano:** un cofre con un cartel (encima o en un lado) que diga el nombre de una categoría
@@ -207,7 +214,7 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
 | `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `chestRadius` 6, `autoChests`, `maxChests` 15 |
 | `farm` | `autoCreate` (arar junto al agua), `searchWaterRadius` |
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
-| `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxChests` 40, `inbox`, `protect`, `categories` |
+| `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 80, `maxChests` 0 (ilimitado), `inbox`, `protect`, `categories`, `trash` (máximo por objeto barato), `recountEveryRounds` 6 |
 | `fishing` | `searchRadius` 32 |
 | `rancher` | `penRadius` 6, `maxCows` 10, `minBreeders` 2, `breedCooldownMinutes` 5, `cycleSeconds` 15 |
 | `starterCommands` | Comandos al conectarse (ajuste de escala para las físicas de salto en 1.21+, requiere OP) |
