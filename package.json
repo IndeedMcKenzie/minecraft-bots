@@ -1,16 +1,27 @@
 {
   "name": "minecraft-bots",
   "version": "1.0.0",
-  "description": "Bots de Mineflayer para servidor Paper 1.26.2 - Recolección, minería y agricultura",
-  "main": "index.js",
+  "description": "6 autonomous Minecraft bots (Mineflayer) with a web control panel: woodcutter, miner, farmer, fisher, rancher and organizer",
+  "main": "panel.js",
   "license": "MIT",
+  "author": "IndeedMcKenzie",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IndeedMcKenzie/minecraft-bots.git"
+  },
+  "keywords": ["minecraft", "mineflayer", "minecraft-bot", "papermc", "automation"],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node panel.js",
     "start:separados": "node index.js",
     "woodcutter": "node bots/woodcutter.js",
     "miner": "node bots/miner.js",
     "farmer": "node bots/farmer.js",
-    "fisher": "node bots/fisher.js"
+    "fisher": "node bots/fisher.js",
+    "organizer": "node bots/organizer.js",
+    "rancher": "node bots/rancher.js"
   },
   "dependencies": {
     "mineflayer": "^4.39.0",
