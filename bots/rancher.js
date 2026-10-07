@@ -7,6 +7,8 @@
 //  5. Guarda lo obtenido en el cofre de casa (dentro del corral)
 //  El material (vallas, trigo, espada) lo consigue con /give si le falta.
 // ============================================================
+const fs = require('fs')
+const path = require('path')
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const { loader: autoEat } = require('mineflayer-auto-eat')
@@ -41,7 +43,7 @@ const SUMMON_RETRY_MS = 2 * 60 * 1000
 const DEPOSIT_AT = 16
 
 // Al guardar se queda trigo para criar y su espada
-const KEEP_AMOUNTS = { wheat: 64, ...Object.fromEntries(SWORDS.map(s => [s, 1])), [FENCE]: 16, [GATE]: 1 }
+const KEEP_AMOUNTS = { wheat: 64, ...Object.fromEntries(SWORDS.map(s => [s, 1])), [FENCE]: 16, [GATE]: 1, dirt: 16 }
 
 function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('rancher'))
@@ -52,6 +54,15 @@ function createBot(ctrl = {}) {
   setupBot(bot, 'Ganadero', () => createBot(ctrl), 'rancher', ctrl)
 
   bot.once('spawn', () => {
+    // Dentro del corral no necesita picar ni poner bloques para moverse. Si se le deja, el pathfinder
+    // rompe vallas para "atajar" y usa la tierra de nivelar como andamio, creando escalones junto a
+    // las vallas por los que las vacas escapan. Las vallas y la tierra se colocan a propósito en buildPen.
+    const movements = bot.pathfinder.movements
+    if (movements) {
+      movements.canDig = false
+      movements.scafoldingBlocks = []
+      movements.allow1by1towers = false
+    }
     console.log(`[${cfg.bots.rancher.username}] 🐄 Conectado. Preparando el corral...`)
     setTimeout(() => workLoop(bot), 3000)
   })
@@ -150,9 +161,9 @@ function inPen(bot, pos) {
 }
 
 // Posiciones (x, z) del anillo de vallas, recorriéndolo en orden; la puerta va en el centro del lado sur
-function ringPositions(bot) {
+function ringPositions(bot, center = bot.home) {
   const R = rCfg.penRadius
-  const c = bot.home
+  const c = center
   const ring = []
   for (let dx = -R; dx <= R; dx++) ring.push([dx, -R])
   for (let dz = -R + 1; dz <= R; dz++) ring.push([R, dz])
@@ -164,8 +175,8 @@ function ringPositions(bot) {
 // Altura del suelo en (x, z) cerca de la altura de casa: bloque sólido (que no sea una valla)
 // con encima algo no sólido o una valla. Las vallas tienen caja de colisión de bloque completo,
 // así que sin excluirlas el bot tomaría una valla ya puesta por suelo y pondría otra encima.
-function groundAt(bot, x, z) {
-  const base = bot.home.y
+function groundAt(bot, x, z, refY = bot.home.y) {
+  const base = refY
   for (let y = base + 4; y >= base - 5; y--) {
     const b = bot.blockAt(new Vec3(x, y, z))
     const above = bot.blockAt(new Vec3(x, y + 1, z))
@@ -179,102 +190,184 @@ function isFenceLike(block) {
   return !!block && (block.name.endsWith('_fence') || block.name.endsWith('_fence_gate') || block.name.endsWith('_wall'))
 }
 
-/** Coloca las vallas que falten. Devuelve true si el corral queda completo. */
-async function buildPen(bot) {
-  await removeStackedFences(bot)
-  const todo = []
-  let unevenWarned = false
-  let prevY = null
-  for (const spot of ringPositions(bot)) {
-    const ground = groundAt(bot, spot.x, spot.z)
-    if (!ground) continue
-    if (prevY !== null && Math.abs(ground.position.y - prevY) > 1 && !unevenWarned) {
-      console.warn('[Ganadero] ⛰️ El terreno del corral es irregular: las vacas podrían escaparse por los desniveles. Mejor un sitio llano.')
-      unevenWarned = true
-    }
-    prevY = ground.position.y
-    const target = bot.blockAt(ground.position.offset(0, 1, 0))
-    if (isFenceLike(target)) continue
-    todo.push({ ...spot, ground })
+const FILL_BLOCK = 'dirt'  // para nivelar la base de las vallas en terreno irregular
+const MAX_FILL = 3         // como mucho rellena 3 bloques bajo una valla
+const PEN_FILE = path.join(__dirname, '..', 'data', 'corral.json')
+
+function isAirLike(block) {
+  return !!block && block.boundingBox === 'empty' && !block.name.includes('water') && !block.name.includes('lava')
+}
+
+// Suelo interior más alto pegado a una posición del anillo (en esquinas mira los 3 vecinos interiores)
+function innerGroundY(bot, spot, center) {
+  const R = rCfg.penRadius
+  const dx = spot.x - center.x
+  const dz = spot.z - center.z
+  const sx = Math.abs(dx) === R ? Math.sign(dx) : 0
+  const sz = Math.abs(dz) === R ? Math.sign(dz) : 0
+  const cands = []
+  if (sx) cands.push([spot.x - sx, spot.z])
+  if (sz) cands.push([spot.x, spot.z - sz])
+  if (sx && sz) cands.push([spot.x - sx, spot.z - sz])
+  let max = null
+  for (const [x, z] of cands) {
+    const g = groundAt(bot, x, z, center.y)
+    if (g && (max === null || g.position.y > max)) max = g.position.y
   }
-  if (todo.length === 0) return true
+  return max
+}
 
-  console.log(`[Ganadero] 🚧 Construyendo el corral: faltan ${todo.length} vallas.`)
-  const fencesNeeded = todo.filter(t => !t.gate).length
-  if (!await ensureItem(bot, FENCE, fencesNeeded)) return false
+/**
+ * Plan de una posición del anillo. La valla debe apoyarse a la altura del suelo interior más alto
+ * de al lado: si su columna es más baja, desde dentro solo sobresaldría medio bloque y las vacas
+ * la saltarían. En ese caso se rellena con tierra hasta esa altura (como mucho MAX_FILL bloques).
+ */
+function planSpot(bot, spot) {
+  const g = groundAt(bot, spot.x, spot.z)
+  if (!g) return null
+  const groundY = g.position.y
+  const inner = innerGroundY(bot, spot, bot.home)
+  const base = Math.min(Math.max(groundY, inner ?? groundY), groundY + MAX_FILL)
+  const fenceY = base + 1
+  const at = y => bot.blockAt(new Vec3(spot.x, y, spot.z))
+
+  const misplaced = [] // vallas mal puestas por debajo de la altura correcta
+  for (let y = groundY + 1; y <= base; y++) if (isFenceLike(at(y))) misplaced.push(y)
+  const stacked = isFenceLike(at(fenceY)) && at(fenceY + 1) && at(fenceY + 1).name.endsWith('_fence')
+  const fill = base - groundY
+  const ok = isFenceLike(at(fenceY)) && misplaced.length === 0 && !stacked
+  return { ...spot, groundY, base, fenceY, fill, misplaced, stacked, ok }
+}
+
+/** Construye y repara el corral (nivelando desniveles). Devuelve true si queda completo. */
+async function buildPen(bot) {
+  await removeOldPens(bot)
+
+  const todo = ringPositions(bot).map(s => planSpot(bot, s)).filter(p => p && !p.ok)
+  if (todo.length === 0) {
+    rememberPen(bot.home)
+    return true
+  }
+
+  const fills = todo.reduce((a, t) => a + t.fill, 0)
+  console.log(`[Ganadero] 🚧 Corral: ${todo.length} postes por hacer o corregir${fills ? ` (nivelando ${fills} bloques de desnivel)` : ''}.`)
+  if (!await ensureItem(bot, FENCE, todo.filter(t => !t.gate).length)) return false
   if (todo.some(t => t.gate) && !await ensureItem(bot, GATE, 1)) return false
+  if (fills > 0 && !await ensureItem(bot, FILL_BLOCK, fills)) return false
 
-  let placed = 0
+  let done = 0
   for (const t of todo) {
     if (bot.stopped || bot.pendingCommand) break
-    const targetPos = t.ground.position.offset(0, 1, 0)
-
-    // Acercarse desde dentro del corral (2 bloques hacia el centro)
-    const inward = new Vec3(
-      targetPos.x + Math.sign(bot.home.x - targetPos.x) * 2,
-      targetPos.y,
-      targetPos.z + Math.sign(bot.home.z - targetPos.z) * 2,
-    )
-    if (!inReach(bot, t.ground)) {
-      await safeGoto(bot, new GoalNear(inward.x, inward.y, inward.z, 1), 10)
-      if (!inReach(bot, t.ground)) continue
-    }
-
-    // Quitar hierba, flores o lo que ocupe el hueco
-    const occupant = bot.blockAt(targetPos)
-    if (occupant && occupant.name !== 'air' && occupant.name !== 'cave_air') {
-      if (!occupant.diggable || occupant.name.includes('chest')) continue
-      try { await bot.dig(occupant) } catch { continue }
-    }
-    // No ponerla donde está el propio bot
-    const feet = bot.entity.position.floored()
-    if (feet.equals(targetPos) || feet.offset(0, 1, 0).equals(targetPos)) continue
-
-    try {
-      await bot.equip(bot.inventory.items().find(i => i.name === (t.gate ? GATE : FENCE)), 'hand')
-      await bot.placeBlock(bot.blockAt(t.ground.position), new Vec3(0, 1, 0))
-      placed++
-    } catch {}
+    if (await fixSpot(bot, t)) done++
     await sleep(100)
   }
 
-  const missing = ringPositions(bot).filter(s => {
-    const g = groundAt(bot, s.x, s.z)
-    return g && !isFenceLike(bot.blockAt(g.position.offset(0, 1, 0)))
-  }).length
-  if (placed > 0) console.log(`[Ganadero] 🚧 Colocadas ${placed} vallas.${missing ? ` Faltan ${missing} (reintentaré).` : ' ¡Corral terminado!'}`)
+  const missing = ringPositions(bot).map(s => planSpot(bot, s)).filter(p => p && !p.ok).length
+  if (done > 0) console.log(`[Ganadero] 🚧 Corregidos ${done} postes.${missing ? ` Faltan ${missing} (reintentaré).` : ' ¡Corral terminado y nivelado!'}`)
+  if (missing === 0) rememberPen(bot.home)
   return missing === 0
 }
 
-/** Quita vallas apiladas sobre otras en el anillo del corral (una versión anterior las ponía por error). */
-async function removeStackedFences(bot) {
-  let removed = 0
-  for (const spot of ringPositions(bot)) {
-    if (bot.stopped || bot.pendingCommand) break
-    const ground = groundAt(bot, spot.x, spot.z)
-    if (!ground) continue
-    const first = bot.blockAt(ground.position.offset(0, 1, 0))
-    const extra = bot.blockAt(ground.position.offset(0, 2, 0))
-    if (!isFenceLike(first) || !extra || !extra.name.endsWith('_fence')) continue
-
-    if (!inReach(bot, extra)) {
-      const inward = new Vec3(
-        extra.position.x + Math.sign(bot.home.x - extra.position.x) * 2,
-        ground.position.y + 1,
-        extra.position.z + Math.sign(bot.home.z - extra.position.z) * 2,
-      )
-      await safeGoto(bot, new GoalNear(inward.x, inward.y, inward.z, 1), 10)
-      if (!inReach(bot, extra)) continue
-    }
-    try {
-      await bot.dig(extra)
-      removed++
-    } catch {}
+async function fixSpot(bot, t) {
+  const top = new Vec3(t.x, t.fenceY, t.z)
+  // Acercarse desde dentro del corral (2 bloques hacia el centro)
+  const inward = new Vec3(t.x + Math.sign(bot.home.x - t.x) * 2, t.base + 1, t.z + Math.sign(bot.home.z - t.z) * 2)
+  if (!inReach(bot, bot.blockAt(top))) {
+    await safeGoto(bot, new GoalNear(inward.x, inward.y, inward.z, 1), 10)
+    if (!inReach(bot, bot.blockAt(top))) return false
   }
+  const at = y => bot.blockAt(new Vec3(t.x, y, t.z))
+  const feet = bot.entity.position.floored()
+  const isBotSpot = y => (feet.x === t.x && feet.z === t.z && (feet.y === y || feet.y + 1 === y))
+
+  try {
+    // 1. Quitar vallas apiladas o mal colocadas (más bajas de lo debido)
+    if (t.stacked) await bot.dig(at(t.fenceY + 1))
+    for (const y of t.misplaced) await bot.dig(at(y))
+
+    // 2. Rellenar con tierra hasta la altura de la base
+    for (let y = t.groundY + 1; y <= t.base; y++) {
+      const b = at(y)
+      if (b.boundingBox === 'block' && !isFenceLike(b)) continue
+      if (isBotSpot(y)) return false
+      if (!isAirLike(b) && b.diggable) await bot.dig(b)
+      await bot.equip(bot.inventory.items().find(i => i.name === FILL_BLOCK), 'hand')
+      await bot.placeBlock(at(y - 1), new Vec3(0, 1, 0))
+    }
+
+    // 3. Poner la valla (o la puerta) encima
+    if (!isFenceLike(at(t.fenceY))) {
+      const occupant = at(t.fenceY)
+      if (occupant && occupant.name !== 'air' && occupant.name !== 'cave_air') {
+        if (!occupant.diggable || occupant.name.includes('chest')) return false
+        await bot.dig(occupant)
+      }
+      if (isBotSpot(t.fenceY)) return false
+      await bot.equip(bot.inventory.items().find(i => i.name === (t.gate ? GATE : FENCE)), 'hand')
+      await bot.placeBlock(at(t.fenceY - 1), new Vec3(0, 1, 0))
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ── Corrales construidos (para retirar los viejos si cambia la casa) ──
+function loadPens() {
+  try { return JSON.parse(fs.readFileSync(PEN_FILE, 'utf8')).centers || [] } catch { return [] }
+}
+
+function savePens(centers) {
+  try {
+    fs.mkdirSync(path.dirname(PEN_FILE), { recursive: true })
+    fs.writeFileSync(PEN_FILE, JSON.stringify({ centers }, null, 2))
+  } catch {}
+}
+
+function rememberPen(center) {
+  const pens = loadPens()
+  if (!pens.some(p => p.x === center.x && p.y === center.y && p.z === center.z)) {
+    pens.push({ x: center.x, y: center.y, z: center.z })
+    savePens(pens)
+  }
+}
+
+/**
+ * Si la casa cambió, retira las vallas de los corrales que construyó antes: solo las que están
+ * exactamente en el anillo de un corral viejo y no forman parte del actual (nunca vallas tuyas sueltas).
+ */
+async function removeOldPens(bot) {
+  const pens = loadPens()
+  const cur = bot.home
+  const old = pens.filter(p => !(p.x === cur.x && p.y === cur.y && p.z === cur.z))
+  if (old.length === 0) return
+
+  const currentRing = new Set(ringPositions(bot).map(s => `${s.x},${s.z}`))
+  const remaining = pens.filter(p => !old.includes(p))
+  let removed = 0
+  for (const p of old) {
+    const center = new Vec3(p.x, p.y, p.z)
+    if (center.distanceTo(bot.entity.position) > 64) { remaining.push(p); continue } // lejos: más tarde
+    console.log(`[Ganadero] 🧹 Retirando el corral viejo centrado en ${fmtPos(center)}...`)
+    for (const s of ringPositions(bot, center)) {
+      if (bot.stopped) return
+      if (currentRing.has(`${s.x},${s.z}`)) continue
+      for (let y = center.y + 5; y >= center.y - 6; y--) {
+        const b = bot.blockAt(new Vec3(s.x, y, s.z))
+        if (!b || !(b.name.endsWith('_fence') || b.name.endsWith('_fence_gate'))) continue
+        if (!inReach(bot, b)) {
+          await safeGoto(bot, new GoalNear(s.x, y, s.z, 2), 10)
+          if (!inReach(bot, b)) continue
+        }
+        try { await bot.dig(b); removed++ } catch {}
+      }
+    }
+  }
+  savePens(remaining)
   if (removed > 0) {
-    console.log(`[Ganadero] 🧹 Quité ${removed} vallas que estaban apiladas sobre otras.`)
+    console.log(`[Ganadero] 🧹 Quité ${removed} vallas de corrales anteriores.`)
     await sleep(500)
-    await collectNearbyItems(bot, rCfg.penRadius + 2)
+    await collectNearbyItems(bot, rCfg.penRadius + 8)
   }
 }
 
