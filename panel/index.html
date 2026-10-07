@@ -351,9 +351,7 @@
     <section class="breakdowns">
       <div class="panel-card"><div class="card-title">⛏️ Minerales por tipo</div><div class="hbars" id="bd-minerales"></div></div>
       <div class="panel-card"><div class="card-title">🎣 Pesca</div><div class="hbars" id="bd-pesca"></div></div>
-      <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>
-      <div class="panel-card"><div class="card-title">🗑️ Excedentes tirados</div><div class="hbars" id="bd-tirados"></div></div>
-    </section>
+      <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>    </section>
   </main>
 
   <main id="view-bots">
@@ -369,6 +367,7 @@
         <button class="tab" data-filter="fisher">🎣 Pescador</button>
         <button class="tab" data-filter="organizer">🗂️ Organizador</button>
         <button class="tab" data-filter="rancher">🐄 Ganadero</button>
+        <button class="tab" data-filter="artisan">🛠️ Artesano</button>
         <button class="tab" data-filter="panel">Panel</button>
       </div>
       <div class="log-list" id="log-list"><div class="empty">Esperando registros…</div></div>
@@ -729,8 +728,11 @@ function renderStats() {
     { label: '🌾 Cultivos cosechados', value: get('farmer', 'cosechas'), sub: `${fmtNum(get('farmer', 'siembras'))} sembrados` },
     { label: '🎣 Capturas de pesca', value: get('fisher', 'capturas') },
     { label: '🐄 Terneros nacidos', value: get('rancher', 'terneros'), sub: `${fmtNum(get('rancher', 'sacrificadas'))} sacrificadas` },
+    // El Artesano sustituye al Fundidor y al Herrero: se suman también sus cifras anteriores
+    { label: '🔥 Fundidos y cocinados', value: get('artisan', 'producidos') + get('smelter', 'producidos') },
+    { label: '🔨 Herramientas fabricadas', value: get('artisan', 'herramientas') + get('smith', 'herramientas'), sub: `${fmtNum(get('artisan', 'entregas') + get('smith', 'entregas'))} entregadas` },
     { label: '📦 Objetos guardados', value: sumAll('guardados'), sub: `${fmtNum(sumAll('viajes'))} viajes a casa` },
-    { label: '🗂️ Objetos ordenados', value: get('organizer', 'ordenados'), sub: `${fmtNum(get('organizer', 'rondas'))} rondas · ${fmtNum(get('organizer', 'tirados'))} excedentes tirados` },
+    { label: '🗂️ Objetos ordenados', value: get('organizer', 'ordenados'), sub: `${fmtNum(get('organizer', 'rondas'))} rondas del organizador` },
   ]
   $('#kpis').replaceChildren(...kpis.map(k => {
     const el = document.createElement('div')
@@ -746,9 +748,7 @@ function renderStats() {
   renderBotsTable(b, d.bots)
   renderHBars($('#bd-minerales'), det.minerales)
   renderHBars($('#bd-pesca'), det.pesca)
-  renderHBars($('#bd-almacen'), det.almacen)
-  renderHBars($('#bd-tirados'), det.tirados)
-}
+  renderHBars($('#bd-almacen'), det.almacen)}
 
 function renderBotsTable(b, bots) {
   const cols = [

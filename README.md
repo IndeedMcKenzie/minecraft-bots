@@ -2,7 +2,7 @@
 
 **English** · [Español](README.es.md)
 
-Six bots built with **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) that work on their own
+Seven bots built with **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) that work on their own
 on a Paper server and are controlled from a **single-window web panel**:
 
 | Bot | Username | What it does |
@@ -13,6 +13,7 @@ on a Paper server and are controlled from a **single-window web panel**:
 | 🎣 Fisher | `Bot_Pescador` | Fishes non-stop in open water near its home |
 | 🗂️ Organizer | `Bot_Organizador` | Collects what the others store and sorts it into a central warehouse with labeled chests |
 | 🐄 Rancher | `Bot_Ganadero` | Builds a fenced pen, breeds cows and culls the surplus above a cap |
+| 🛠️ Artisan | `Bot_Artesano` | Smelts ores, cooks food and crafts spare tools for the other bots |
 
 **Highlights:** every bot has its own home and chests and returns to store items when its inventory fills
 up · adds chests automatically · rescues itself when stuck in a cave · an organizer moves everything into
@@ -44,6 +45,7 @@ the 1.21.4 protocol).
    op Bot_Pescador
    op Bot_Organizador
    op Bot_Ganadero
+   op Bot_Artesano
    ```
 4. **Start the panel:** on Windows, double-click **`abrir_panel.bat`**. On any OS: `npm start` and open
    `http://127.0.0.1:3000`.
@@ -59,7 +61,7 @@ the 1.21.4 protocol).
 
 ## 🖥️ Control panel
 
-`abrir_panel.bat` (or `npm start`) runs all 6 bots in **a single process** (`panel.js`, less RAM) and serves the
+`abrir_panel.bat` (or `npm start`) runs all 7 bots in **a single process** (`panel.js`, less RAM) and serves the
 UI at `http://127.0.0.1:3000`, reachable only from the same PC.
 
 - If the panel is already running, the `.bat` just reopens the window.
@@ -156,11 +158,8 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
   4. If a category has no chest or it's full, it **places a new chest with a sign on top** naming the category.
 - Chests are laid out **on a grid with aisles** and never touch (so they don't merge into double chests mixing categories).
 - **Unlimited warehouse** (`maxChests: 0`): when it runs out of room, the grid **grows in rings** up to
-  `maxWarehouseRadius` (80 blocks). It never places chests next to other bots' homes or inside the pen.
+  `maxWarehouseRadius` (112 blocks). It never places chests next to other bots' homes or inside the pen.
   If a category doesn't fit, those items stay in the bots' homes and the rest keeps being sorted.
-- **Cheap surplus** (`organizer.trash`): for items like dirt, gravel, sticks, saplings or seeds it keeps at
-  most a set amount (e.g. 256 sticks) and **destroys the rest with `/clear`**. Every 6 rounds it recounts the
-  warehouse and discards what's over. Remove an item from the list to never discard it.
 - If the server rejects a deposit (happens with items ViaVersion tags, like eggs), it retries into empty slots.
 - **Categories:** Madera (wood), Minerales (ores), Piedra (stone), Cultivos (crops), Pesca (fish),
   Comida (food), Mobs and Varios (everything else). Edit them in `config.js` → `organizer.categories`
@@ -183,6 +182,20 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 - Fences, dirt, wheat and sword come from `/give` when missing. Tune it in `config.js` → `rancher`.
 - ⚠️ Mob-stacking plugins (e.g. **StackMob**) make it miscount the cows and breed or cull too many.
 
+### 🛠️ Artisan (workshop: furnaces + tools)
+- Its home is a chest in the **workshop, near the warehouse** (outside its grid), with ~7 flat free blocks to
+  the north for the furnaces and some room on the sides for the crafting table: `!casa artesano`.
+- **Tools (first):** every 10 min it checks that each bot has **1 spare tool** at home: axe (woodcutter),
+  pickaxe (miner), hoe (farmer), fishing rod (fisher) and sword (rancher). If one is missing it takes materials
+  from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods),
+  **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`.
+- **Furnaces:** places **4 furnaces** next to its chest. When furnaces are free it takes **raw iron, gold and
+  copper**, **raw meat and fish** and **potatoes** from the warehouse, with **coal** as fuel (or wood if there's
+  no coal), and loads 64 at a time. The furnaces keep working while it crafts tools.
+- It stores the results (ingots, cooked food) and leftover materials in its chest; **the organizer takes them
+  to the warehouse**.
+- Tune it in `config.js` → `smelter` (furnaces) and `smith` (tools).
+
 ### 🆘 Getting unstuck (woodcutter & miner)
 - If a bot spends **90 s away from home without moving more than 3 blocks**, it's considered stuck:
   1. It climbs to the surface: stairs or towering with the pathfinder and, failing that, a **manual pillar**
@@ -201,7 +214,7 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 | `!casa todos` | Same for every bot (each looks near itself) |
 
 `<bot>` can be the Spanish role name (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`,
-`ganadero`), the key (`miner`, `woodcutter`, `farmer`, `fisher`, `organizer`, `rancher`) or the username (`Bot_Minero`).
+`ganadero`, `artesano`), the key (`miner`, `woodcutter`, `farmer`, `fisher`, `organizer`, `rancher`, `artisan`) or the username (`Bot_Minero`).
 
 ---
 
@@ -218,9 +231,11 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 | `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `chestRadius` 6, `autoChests`, `maxChests` 15 |
 | `farm` | `autoCreate` (till next to water), `searchWaterRadius` |
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
-| `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 80, `maxChests` 0 (unlimited), `inbox`, `protect`, `categories`, `trash` (cap per cheap item), `recountEveryRounds` 6 |
+| `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (unlimited), `inbox`, `protect`, `categories` |
 | `fishing` | `searchRadius` 32 |
 | `rancher` | `penRadius` 6, `maxCows` 10, `minBreeders` 2, `breedCooldownMinutes` 5, `cycleSeconds` 15 |
+| `smelter` (Artisan, furnaces) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (what to smelt/cook), `fuels` |
+| `smith` (Artisan, tools) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (each bot's tool), `tiers` (diamond > iron > stone) |
 | `starterCommands` | Commands run on join (scale tweak for 1.21+ jump physics, needs OP) |
 | `bots.<bot>` | `username`, `home` (fixed `{x,y,z}`), `stuckWatch`, `give` (what 🎁 hands out), `viewDistance`, `autoHome`, `pathfinderTickMs` |
 
@@ -233,7 +248,7 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
   bot usernames in `config.js`.
 - **Don't run a bot on its own** (`node bots/<bot>.js`) while the panel is running: both would log in with the
   same name and kick each other in a loop.
-- **Resources:** with all 6 bots the process uses about **450–550 MB of RAM** and around **half a CPU core**
+- **Resources:** with all 7 bots the process uses about **500–550 MB of RAM** and around **half a CPU core**
   while everyone is busy. Path computation is the biggest cost (`performance.pathfinderTickMs`).
   Every animal in the pen also costs the server: don't raise `rancher.maxCows` too much.
 - **If a bot dies**, it loses what it carried and respawns at spawn or its bed, then goes back to work.
@@ -248,7 +263,7 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 
 ```
 abrir_panel.bat        Opens the panel on Windows (recommended)
-panel.js               Manager for the 6 bots + panel server (127.0.0.1:3000)
+panel.js               Manager for the 7 bots + panel server (127.0.0.1:3000)
 panel/index.html       Panel UI
 config.js              All the configuration
 bots/common.js         Shared logic: home, travel, chests, rescue, panel commands, /give, /tp
@@ -259,6 +274,8 @@ bots/farmer.js         Farmer
 bots/fisher.js         Fisher
 bots/organizer.js      Organizer
 bots/rancher.js        Rancher
+bots/artisan.js        Artisan (furnaces + tools)
+bots/warehouse.js      Warehouse access (used by the artisan)
 data/                  Your world's data (created automatically, not committed):
   home_<bot>.json        each bot's home
   almacen.json           category of each organizer chest (backup of the signs)

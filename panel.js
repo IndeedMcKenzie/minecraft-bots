@@ -22,6 +22,7 @@ const BOT_DEFS = [
   { key: 'fisher',     label: 'Pescador', emoji: '🎣', file: './bots/fisher'     },
   { key: 'organizer',  label: 'Organizador', emoji: '🗂️', file: './bots/organizer' },
   { key: 'rancher',    label: 'Ganadero', emoji: '🐄', file: './bots/rancher'    },
+  { key: 'artisan',    label: 'Artesano', emoji: '🛠️', file: './bots/artisan'    },
 ]
 const DEF_BY_KEY = Object.fromEntries(BOT_DEFS.map(d => [d.key, d]))
 

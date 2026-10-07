@@ -67,6 +67,7 @@ module.exports = {
   // Fix de física de salto en Minecraft 1.21+ (bug conocido de mineflayer)
   // Requiere que los bots tengan OP: ejecuta en consola del servidor:
   //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Ganadero
+  //   op Bot_Artesano
   starterCommands: [
     '/attribute {username} minecraft:scale base set 0.9999',
   ],
@@ -84,19 +85,10 @@ module.exports = {
   organizer: {
     intervalMinutes: 20,   // Cada cuánto hace una ronda (también hay un botón en el panel)
     warehouseRadius: 12,   // Radio inicial del almacén alrededor de su casa (crece solo si se llena)
-    maxWarehouseRadius: 80, // Hasta dónde puede crecer (≈ zona que el bot tiene cargada desde su casa)
+    // Hasta dónde puede crecer. El organizador carga 8 chunks (128 bloques) a su alrededor,
+    // así que no conviene pasar de ~112 (más allá no "vería" los cofres desde su casa)
+    maxWarehouseRadius: 112,
     maxChests: 0,          // Máximo de cofres del almacén. 0 = ilimitado
-    // Excedentes baratos: se guarda como mucho esta cantidad de cada objeto; lo que sobre se destruye
-    // con /clear (requiere OP). * = cualquier texto. Para no tirar nunca algo, quítalo de la lista.
-    trash: {
-      'dirt': 128, 'gravel': 64, 'sand': 128,
-      'andesite': 64, 'diorite': 64, 'granite': 64, 'tuff': 64, 'calcite': 64,
-      'cobblestone': 1024, 'cobbled_deepslate': 512,
-      'stick': 256, '*_sapling': 64, 'mangrove_propagule': 64,
-      'wheat_seeds': 256, 'beetroot_seeds': 128,
-      'rotten_flesh': 64, 'poisonous_potato': 0, 'spider_eye': 64,
-    },
-    recountEveryRounds: 6, // Cada cuántas rondas recuenta lo guardado de esos objetos (por si tú sacas cosas)
     // Buzón: el cofre de su casa (si no tiene cartel) se vacía y se ordena en cada ronda, y lo usa de
     // colchón si se queda sin sitio. ¡Si ese cofre tiene cosas tuyas, las moverá! Por eso viene apagado.
     inbox: false,
@@ -125,6 +117,25 @@ module.exports = {
     cycleSeconds: 15,      // Cada cuánto revisa el corral
   },
 
+  // Artesano · hornos: fila de hornos junto a su casa (taller); materiales y combustible del almacén
+  smelter: {
+    furnaces: 4,           // Hornos que coloca junto a su casa
+    cycleSeconds: 30,      // Cada cuánto revisa los hornos
+    batchPerFurnace: 64,   // Cuánto mete en cada horno de una vez
+    // Lo que funde o cocina (lo saca del almacén: Minerales, Comida, Pesca, Cultivos)
+    smelt: ['raw_iron', 'raw_gold', 'raw_copper', 'beef', 'porkchop', 'mutton', 'chicken', 'rabbit', 'cod', 'salmon', 'potato'],
+    fuels: ['coal', 'charcoal', '*_log', '*_planks'], // combustible, en orden de preferencia
+  },
+
+  // Artesano · herramientas: fabrica repuestos con materiales del almacén y se los lleva a cada bot
+  smith: {
+    checkMinutes: 10,      // Cada cuánto revisa los repuestos
+    sparesPerBot: 1,       // Herramientas de repuesto que debe haber en la casa de cada bot
+    // Qué herramienta necesita cada bot
+    tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod', rancher: 'sword' },
+    tiers: ['diamond', 'iron', 'stone'], // material preferido (si no hay, el siguiente)
+  },
+
   // Pescador
   fishing: {
     searchRadius: 32,    // Busca agua abierta a esta distancia de su casa
@@ -139,6 +150,7 @@ module.exports = {
     farmer:     { username: 'Bot_Granjero', home: null, give: [{ item: 'diamond_hoe', count: 1 }, { item: 'wheat_seeds', count: 32 }] },
     fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 'tiny' }, // no explora: carga menos chunks
     organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, pathfinderTickMs: 40 }, // su casa es el almacén central (la eliges tú)
+    artisan:    { username: 'Bot_Artesano', home: null, autoHome: false, viewDistance: 'tiny' }, // funde, cocina y fabrica herramientas; su casa es el taller (la eliges tú)
     rancher:    { username: 'Bot_Ganadero', home: null, autoHome: false, viewDistance: 'tiny', give: [{ item: 'wheat', count: 64 }, { item: 'diamond_sword', count: 1 }] }, // su casa es el centro del corral (la eliges tú)
   },
 }
