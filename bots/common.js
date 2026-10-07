@@ -160,11 +160,24 @@ function inReach(bot, block) {
   return block.position.offset(0.5, 0.5, 0.5).distanceTo(bot.entity.position.offset(0, 1.62, 0)) <= REACH
 }
 
+/**
+ * Detiene la ruta AL MOMENTO. pathfinder.stop() solo marca "parar al llegar al siguiente punto"; si el bot
+ * está atascado y no llega, la marca se queda puesta y cancela la SIGUIENTE ruta nada más empezar
+ * (setGoal la aplica: borra el objetivo nuevo y emite path_stop). setGoal(null) la aplica ya y deja el
+ * pathfinder limpio.
+ */
+function haltPathfinder(bot) {
+  try { bot.pathfinder.stop() } catch {}
+  try { bot.pathfinder.setGoal(null) } catch {}
+}
+
 function safeGoto(bot, goal, minTimeoutSeconds = 25) {
   return new Promise((resolve) => {
     if (bot.stopped || !bot.entity) return resolve(false)
     // Hay una orden pendiente: abandonar la tarea actual para atenderla cuanto antes
     if (bot.pendingCommand && !bot.commandRunning) return resolve(false)
+    // Descartar una parada pendiente de una ruta anterior, para que no cancele esta nada más empezar
+    try { bot.pathfinder.setGoal(null) } catch {}
 
     let finished = false
     let timeoutMs = minTimeoutSeconds * 1000
@@ -182,7 +195,7 @@ function safeGoto(bot, goal, minTimeoutSeconds = 25) {
     const timer = setTimeout(() => {
       if (!finished) {
         finished = true
-        try { bot.pathfinder.stop() } catch {}
+        haltPathfinder(bot)
         resolve(false)
       }
     }, timeoutMs)
@@ -696,7 +709,7 @@ function findChestSpots(bot, existing) {
 
 function requestCommand(bot, type) {
   bot.pendingCommand = type
-  try { bot.pathfinder.stop() } catch {}
+  haltPathfinder(bot)
   if (bot.fishing) { try { bot.activateItem() } catch {} } // recoger el anzuelo del pescador
 }
 

@@ -395,8 +395,9 @@ async function craftTool(bot, family) {
   if (family === 'fishing_rod') {
     if (countOf(bot, n => n === 'string') < 2) await fetchFromWarehouse(bot, [{ test: n => n === 'string', max: 2, cats: ['Mobs', 'Varios'] }], 'Artesano')
     if (countOf(bot, n => n === 'string') < 2) {
-      console.warn(`${TAG} 🧵 No hay cuerda en el almacén para fabricar una caña.`)
-      return null
+      // Ningún bot consigue cuerda (sale de las arañas): si el almacén no tiene, se la da con /give
+      console.log(`${TAG} 🧵 No hay cuerda en el almacén: me la doy con /give.`)
+      if (!await giveSelf(bot, 'string', 2)) return null
     }
     if (!await ensureSticks(bot, 3)) return null
     itemName = 'fishing_rod'
