@@ -8,6 +8,7 @@ const net = require('net')
 const path = require('path')
 const util = require('util')
 const cfg = require('./config')
+const stats = require('./bots/stats')
 
 const PORT = (cfg.panel && cfg.panel.port) || 3000
 const MAX_LOGS = 500
@@ -20,6 +21,7 @@ const BOT_DEFS = [
   { key: 'farmer',     label: 'Granjero', emoji: '🌾', file: './bots/farmer'     },
   { key: 'fisher',     label: 'Pescador', emoji: '🎣', file: './bots/fisher'     },
   { key: 'organizer',  label: 'Organizador', emoji: '🗂️', file: './bots/organizer' },
+  { key: 'rancher',    label: 'Ganadero', emoji: '🐄', file: './bots/rancher'    },
 ]
 const DEF_BY_KEY = Object.fromEntries(BOT_DEFS.map(d => [d.key, d]))
 
@@ -199,6 +201,7 @@ function shutdown() {
   shuttingDown = true
   console.log('[Panel] ⏻ Apagando bots y panel...')
   for (const d of BOT_DEFS) stopBot(d.key)
+  stats.save()
   broadcast('shutdown', {})
   setTimeout(() => process.exit(0), 1500)
 }
@@ -259,6 +262,14 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/state') return sendJson(res, 200, getState())
 
+  if (req.method === 'GET' && url.pathname === '/api/stats') {
+    return sendJson(res, 200, {
+      ...stats.snapshot(),
+      now: Date.now(),
+      bots: BOT_DEFS.map(d => ({ key: d.key, label: d.label, emoji: d.emoji })),
+    })
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' })
     res.write(`event: init\ndata: ${JSON.stringify({ logs, state: getState() })}\n\n`)
@@ -302,6 +313,13 @@ server.listen(PORT, '127.0.0.1', () => {
   checkServer()
   setInterval(checkServer, SERVER_CHECK_MS)
   setInterval(() => broadcast('state', getState()), STATE_INTERVAL_MS)
+  // Tiempo conectado de cada bot (para las estadísticas)
+  setInterval(() => {
+    for (const d of BOT_DEFS) {
+      const bot = ctrls[d.key] && ctrls[d.key].enabled && ctrls[d.key].bot
+      if (bot && bot.entity && !bot.stopped) stats.add(d.key, 'conectadoMs', STATE_INTERVAL_MS)
+    }
+  }, STATE_INTERVAL_MS)
   if (!cfg.panel || cfg.panel.autoStart !== false) {
     // Escalonado para no saturar el servidor con 3 logins a la vez
     BOT_DEFS.forEach((d, i) => setTimeout(() => startBot(d.key), i * 2000))

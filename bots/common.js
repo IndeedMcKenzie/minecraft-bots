@@ -6,6 +6,7 @@ const path = require('path')
 const Vec3 = require('vec3')
 const { Movements, goals: { GoalNear, GoalNearXZ, GoalY } } = require('mineflayer-pathfinder')
 const cfg = require('../config')
+const stats = require('./stats')
 
 const BAD_BLOCK_MS = 5 * 60 * 1000   // Tiempo que un bloque inalcanzable queda ignorado
 const STUCK_ZONE_MS = 30 * 60 * 1000 // Tiempo que una zona donde se atascó queda prohibida
@@ -105,6 +106,10 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   })
 
   bot.on('chat', (username, message) => handleChatCommand(bot, username, message))
+  bot.on('death', () => {
+    console.log(`[${name}] 💀 He muerto.`)
+    stats.add(botKey, 'muertes')
+  })
 
   bot.on('error', (err) => {
     console.error(`[${name}] ❌ Error: ${err.message}`)
@@ -118,6 +123,7 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     try { msg = JSON.stringify(reason) } catch {}
     console.log(`[${name}] ⚠️ Expulsado: ${msg}`)
     ctrl.issue = `Expulsado: ${msg}`
+    stats.add(botKey, 'expulsiones')
   })
   bot.on('end', () => {
     console.log(`[${name}] 🔌 Conexión finalizada.`)
@@ -452,6 +458,7 @@ async function returnHomeAndDeposit(bot, keepItemNames = [], keepAmounts = {}) {
 async function reachHome(bot) {
   if (!bot.home) return false
   if (isNearHome(bot, 8)) return true
+  stats.add(bot.botKey, 'viajes')
   const start = Date.now()
   if (await travelTo(bot, bot.home, 2, homeCfg.maxTravelMinutes * 60 * 1000)) return true
   if (bot.stopped) return false
@@ -485,6 +492,8 @@ async function depositAtHomeInner(bot, keepItemNames, keepAmounts) {
   let stored = 0
   let fullChests = 0
   let problems = [] // motivos de fallo que no son "cofre lleno", para explicarlos en el registro
+  const countPending = () => getDepositableItems(bot, keepItemNames, keepAmounts).reduce((a, i) => a + i.count, 0)
+  const pendingBefore = countPending()
 
   // Si todos los cofres se llenan, se coloca uno nuevo (hasta homeCfg.maxChests) y se sigue guardando en él
   for (let pass = 0; pass < 4; pass++) {
@@ -497,6 +506,11 @@ async function depositAtHomeInner(bot, keepItemNames, keepAmounts) {
     if (!await placeNewChest(bot)) break
   }
   bot.homeChestCount = findHomeChests(bot).length
+
+  // Estadísticas: objetos (no tipos) que quedaron guardados
+  const storedItems = Math.max(0, pendingBefore - countPending())
+  stats.add(bot.botKey, 'guardados', storedItems)
+  stats.addHourly(bot.botKey, storedItems)
 
   if (stored > 0) console.log(`[${bot.label}] ✅ Guardados ${stored} tipos de items en casa.`)
   const left = getDepositableItems(bot, keepItemNames, keepAmounts)
@@ -602,6 +616,7 @@ async function placeNewChest(bot) {
     await sleep(300)
     if (bot.blockAt(spot)?.name === 'chest') {
       console.log(`[${bot.label}] 📦 Coloqué un cofre nuevo en ${fmtPos(spot)}. Ahora tengo ${existing.length + 1}/${homeCfg.maxChests}.`)
+      stats.add(bot.botKey, 'cofresCreados')
       return true
     }
   }
@@ -714,6 +729,7 @@ function startStuckWatch(bot) {
       console.log(`[${bot.label}] 🆘 Llevo ${stuckCfg.detectSeconds}s sin avanzar en ${fmtPos(last)}. Intentando salir...`)
       // Que no vuelva a por lo mismo: prohibir la zona y el objetivo que perseguía durante un rato
       bot.stuckZones.push({ pos: last.clone(), until: Date.now() + STUCK_ZONE_MS })
+      stats.add(bot.botKey, 'atascos')
       if (bot.currentTarget) markBad(bot, bot.currentTarget, STUCK_ZONE_MS, true)
       requestCommand(bot, 'escape')
     }
@@ -890,6 +906,7 @@ async function teleportTo(bot, pos) {
   }
   await waitUntil(() => bot.blockAt(pos) !== null, 5000) // chunks de destino cargados
   await sleep(1000)
+  stats.add(bot.botKey, 'teletransportes')
   return true
 }
 

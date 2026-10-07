@@ -64,7 +64,7 @@ module.exports = {
 
   // Fix de física de salto en Minecraft 1.21+ (bug conocido de mineflayer)
   // Requiere que los bots tengan OP: ejecuta en consola del servidor:
-  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador
+  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Ganadero
   starterCommands: [
     '/attribute {username} minecraft:scale base set 0.9999',
   ],
@@ -96,10 +96,19 @@ module.exports = {
       'Piedra':     ['cobblestone', 'cobbled_deepslate', 'stone', 'deepslate', 'granite', 'diorite', 'andesite', 'tuff', 'calcite', 'gravel', 'flint', 'dirt', 'sand'],
       'Cultivos':   ['wheat', 'wheat_seeds', 'carrot', 'potato', 'poisonous_potato', 'beetroot', 'beetroot_seeds', 'pumpkin*', 'melon*'],
       'Pesca':      ['cod', 'salmon', 'pufferfish', 'tropical_fish', 'nautilus_shell', 'ink_sac', 'lily_pad'],
-      'Comida':     ['bread', 'cooked_*', 'baked_potato', 'golden_apple'],
+      'Comida':     ['bread', 'cooked_*', 'baked_potato', 'golden_apple', 'beef', 'porkchop', 'mutton', 'chicken', 'rabbit', 'milk_bucket'],
       'Mobs':       ['rotten_flesh', 'bone', 'string', 'spider_eye', 'gunpowder', 'arrow', 'leather', 'feather'],
       'Varios':     ['*'],
     },
+  },
+
+  // Ganadero: construye un corral de vallas alrededor de su casa y cría vacas dentro
+  rancher: {
+    penRadius: 6,          // Vallas a esta distancia del cofre de casa (interior de 11x11)
+    maxCows: 10,           // Máximo de vacas (adultas + crías). Si se supera, sacrifica adultas sobrantes
+    minBreeders: 2,        // Adultas que nunca sacrifica (para seguir criando)
+    breedCooldownMinutes: 5, // Tiempo que una vaca tarda en poder volver a criar
+    cycleSeconds: 15,      // Cada cuánto revisa el corral
   },
 
   // Pescador
@@ -116,5 +125,6 @@ module.exports = {
     farmer:     { username: 'Bot_Granjero', home: null, give: [{ item: 'diamond_hoe', count: 1 }, { item: 'wheat_seeds', count: 32 }] },
     fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 'tiny' }, // no explora: carga menos chunks
     organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, viewDistance: 'tiny' }, // su casa es el almacén central (la eliges tú)
+    rancher:    { username: 'Bot_Ganadero', home: null, autoHome: false, viewDistance: 'tiny', give: [{ item: 'wheat', count: 64 }, { item: 'diamond_sword', count: 1 }] }, // su casa es el centro del corral (la eliges tú)
   },
 }

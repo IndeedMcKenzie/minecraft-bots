@@ -14,6 +14,7 @@ const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
+const stats = require('./stats')
 const {
   botOptions,
   setupBot,
@@ -170,6 +171,8 @@ async function organizeRoundInner(bot) {
 
 function finishRound(bot) {
   const s = bot.roundStats
+  stats.add('organizer', 'rondas')
+  stats.add('organizer', 'recogidos', s.collected)
   console.log(`[Organizador] ✅ Ronda terminada: ${s.collected} objetos recogidos, ${s.sorted} ordenados en el almacén.`)
 }
 
@@ -254,7 +257,7 @@ function sourceHomes(bot) {
     const v = new Vec3(pos.x, pos.y, pos.z)
     if (v.distanceTo(bot.home) <= orgCfg.warehouseRadius + SOURCE_CHEST_RADIUS) continue
     if (homes.some(h => h.pos.distanceTo(v) < 1)) continue
-    const label = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador' }[key] || key
+    const label = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', rancher: 'Ganadero' }[key] || key
     homes.push({ key, label, pos: v })
   }
   return homes
@@ -362,6 +365,8 @@ async function sortIntoWarehouse(bot) {
     const stored = before - cargoOfCategory(bot, cat).reduce((a, i) => a + i.count, 0)
     if (stored > 0) summary.push(`${cat} ×${stored}`)
     if (bot.roundStats) bot.roundStats.sorted += stored
+    stats.add('organizer', 'ordenados', stored)
+    stats.addDetail('almacen', cat, stored)
   }
 
   if (summary.length) console.log(`[Organizador] 🗂️ Ordenado: ${summary.join(' · ')}`)
@@ -512,6 +517,7 @@ async function createCategoryChest(bot, cat, warehouse) {
     warehouse.byCategory.get(normalize(cat)).push(chest)
     warehouse.total++
     console.log(`[Organizador] 🆕 Cofre nuevo para "${cat}" en ${fmtPos(spot)} (${warehouse.total}/${orgCfg.maxChests}).`)
+    stats.add('organizer', 'cofresCreados')
     return true
   }
   console.warn(`[Organizador] 📦 No encontré hueco para un cofre nuevo de "${cat}" en el almacén.`)

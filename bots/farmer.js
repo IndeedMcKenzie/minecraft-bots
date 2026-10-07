@@ -6,6 +6,7 @@ const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
+const stats = require('./stats')
 const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
 
 const FARM_RADIUS = () => cfg.search.farmRadius || 32
@@ -165,6 +166,7 @@ async function harvestMatureCrops(bot, mcData) {
   }
   if (harvested > 0) {
     console.log(`[Granjero] ✅ Cosechados ${harvested} cultivos.`)
+    stats.add('farmer', 'cosechas', harvested)
     await collectNearbyItems(bot, 8)
   }
   return harvested
@@ -248,6 +250,7 @@ async function plantEmptyFarmland(bot, mcData) {
       await bot.placeBlock(farmlandBlock, new Vec3(0, 1, 0))
       console.log(`[Granjero] 🌱 Sembrado ${seedItem.name} en ${fmtPos(pos)}`)
       planted++
+      stats.add('farmer', 'siembras')
       await sleep(250)
     } catch {
       markBad(bot, pos)

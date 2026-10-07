@@ -8,6 +8,7 @@ const { pathfinder, goals: { GoalNear, GoalBlock } } = require('mineflayer-pathf
 const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
+const stats = require('./stats')
 const {
   botOptions,
   setupBot,
@@ -131,6 +132,7 @@ async function workLoop(bot) {
         continue
       }
       treesCut++
+      stats.add('woodcutter', 'arboles')
 
       // 7. Replantar brote
       await tryReplant(bot, logBlock)

@@ -1,6 +1,6 @@
 # 🤖 Bots autónomos de Minecraft (Paper 26.2)
 
-Cinco bots hechos con **Mineflayer** (Node.js) que trabajan solos en tu servidor Paper y se controlan desde
+Seis bots hechos con **Mineflayer** (Node.js) que trabajan solos en tu servidor Paper y se controlan desde
 un **panel en una sola ventana**:
 
 | Bot | Usuario | Qué hace |
@@ -10,6 +10,7 @@ un **panel en una sola ventana**:
 | 🌾 Granjero | `Bot_Granjero` | Cosecha, replanta, siembra y amplía su granja junto al agua |
 | 🎣 Pescador | `Bot_Pescador` | Pesca sin parar en agua abierta cerca de su casa |
 | 🗂️ Organizador | `Bot_Organizador` | Recoge lo que guardan los demás y lo ordena en un almacén central con carteles |
+| 🐄 Ganadero | `Bot_Ganadero` | Construye un corral, cría vacas y sacrifica las sobrantes al pasar del máximo |
 
 ---
 
@@ -23,11 +24,12 @@ un **panel en una sola ventana**:
    op Bot_Granjero
    op Bot_Pescador
    op Bot_Organizador
+   op Bot_Ganadero
    ```
 3. Doble clic en **`abrir_panel.bat`**. Los bots se conectan solos y se abre el panel.
 4. **Casas:** cada bot adopta como casa el cofre más cercano al aparecer. Para elegirla tú, hazle TP junto
    a un cofre y escribe `!casa <bot>` en el chat (o pulsa **🏠 Fijar casa** en el panel).
-   El **Organizador** no adopta ninguna: su casa (el almacén) la tienes que elegir tú.
+   El **Organizador** y el **Ganadero** no adoptan ninguna: su casa (el almacén / el centro del corral) la eliges tú.
 
 > ⚠️ **Seguridad:** el servidor está en modo *offline*. Cualquiera que entre con el nombre de un bot tendrá
 > sus permisos de OP. Si el servidor no es solo para ti en tu red local, ten cuidado (ver «Cosas a saber»).
@@ -63,6 +65,18 @@ Edge en modo app con la interfaz en `http://127.0.0.1:3000`. Solo se puede abrir
 | 🗂️ Organizar ahora | Solo en el Organizador: hace una ronda de recogida y ordenación |
 
 El **registro** de abajo se filtra por bot con las pestañas.
+
+### 📊 Pestaña Estadísticas
+Arriba del panel cambias entre **🤖 Bots** y **📊 Estadísticas** (o abre `http://127.0.0.1:3000/#stats`).
+Puedes ver **«Esta sesión»** o **«Desde siempre»**:
+- **Cifras clave:** árboles talados, minerales (y diamantes), cultivos cosechados, capturas de pesca,
+  terneros nacidos, objetos guardados y objetos ordenados por el organizador.
+- **Gráfico por horas** de objetos guardados en casa (últimas 24 h); al pasar el ratón desglosa por bot.
+- **Tabla por bot:** tiempo conectado, objetos guardados, viajes a casa, teletransportes, atascos,
+  cofres creados, muertes y expulsiones.
+- **Desgloses:** minerales por tipo, pesca por tipo y almacén por categoría.
+
+Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo para empezar de cero.
 
 ---
 
@@ -126,6 +140,18 @@ El **registro** de abajo se filtra por bot con las pestañas.
 - **Buzón (opcional, apagado):** con `organizer.inbox: true`, el cofre de su casa se vacía y ordena en cada
   ronda (útil para dejarle cosas). ¡Si ese cofre tiene cosas tuyas, las moverá!
 
+### 🐄 Ganadero (vacas)
+- Su casa es un cofre en el **centro del corral**: pon el cofre en un sitio **llano de al menos 13×13**,
+  hazle TP al lado y usa `!casa ganadero`.
+- **Construye el corral** solo: un cuadrado de vallas a 6 bloques del cofre, con una **puerta en el lado sur**
+  para que entres tú. Las vallas las consigue con `/give`. Repara huecos cada 5 minutos.
+- Si hay menos de 2 vacas adultas, **invoca las que falten con `/summon`** (solo con el corral cerrado).
+- **Cría**: alimenta con trigo a parejas de adultas (cada vaca, una vez cada 5 min) sin pasarse del máximo.
+  Las crías tardan unos 20 min en crecer.
+- **Sacrifica solo si hay más de 10** vacas (adultas + crías): mata adultas sobrantes con espada, dejando
+  siempre al menos 2, y guarda carne y cuero en su cofre (el organizador lo lleva al almacén).
+- Trigo y espada los consigue con `/give` si le faltan. Se ajusta en `config.js` → `rancher`.
+
 ### 🆘 Rescate de atascos (leñador y minero)
 - Si pasan **90 s fuera de casa sin alejarse más de 3 bloques**, se consideran atascados:
   1. Suben a la superficie: escaleras o torre con el pathfinder y, si no, **pilar manual** (pican encima y se
@@ -163,6 +189,7 @@ El **registro** de abajo se filtra por bot con las pestañas.
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxChests` 40, `inbox`, `protect`, `categories` |
 | `fishing` | `searchRadius` 32 |
+| `rancher` | `penRadius` 6, `maxCows` 10, `minBreeders` 2, `breedCooldownMinutes` 5, `cycleSeconds` 15 |
 | `starterCommands` | Comandos al conectarse (ajuste de escala para las físicas de salto en 1.21+, requiere OP) |
 | `bots.<bot>` | `username`, `home` (`{x,y,z}` fija), `stuckWatch`, `give` (lo que entrega 🎁), `viewDistance`, `autoHome` |
 
@@ -175,8 +202,8 @@ El **registro** de abajo se filtra por bot con las pestañas.
   login (contraseña) o mover `/give` y `/tp` a RCON.
 - **No mezcles** el panel con `iniciar_bots.bat` / `index.js`: los bots se expulsarían entre sí por login
   duplicado. Además, esos lanzadores clásicos solo arrancan 3 bots (sin pescador ni organizador).
-- **Recursos:** con los 5 bots, el proceso usa unos **450–530 MB de RAM** y en torno a **medio núcleo de CPU**
-  cuando todos están activos. Lo que más gasta es el cálculo de rutas; se ajusta con `performance.pathfinderTickMs`.
+- **Recursos:** con 5–6 bots, el proceso usa unos **450–550 MB de RAM** y en torno a **medio núcleo de CPU**
+  cuando todos están activos. Cada animal del corral también es trabajo para el servidor: no subas mucho `rancher.maxCows`. Lo que más gasta es el cálculo de rutas; se ajusta con `performance.pathfinderTickMs`.
 - **Si un bot muere**, pierde lo que llevaba y reaparece en el spawn o en su cama; luego vuelve a trabajar.
 - **Cambiar la casa de un bot:** `!casa <bot>` / 🏠 Fijar casa, o borrar `data/home_<bot>.json`.
 - **Cofre de casa roto:** el bot olvida esa casa y adopta otra (excepto el organizador).
@@ -198,8 +225,11 @@ bots/miner.js          Minero
 bots/farmer.js         Granjero
 bots/fisher.js         Pescador
 bots/organizer.js      Organizador
+bots/rancher.js        Ganadero
 data/home_<bot>.json   Casa guardada de cada bot
 data/almacen.json      Categoría de cada cofre que creó el organizador (respaldo de los carteles)
+data/stats.json        Estadísticas acumuladas (pestaña 📊 del panel)
+bots/stats.js          Contadores de estadísticas
 iniciar_bots.bat, detener_bots.bat, index.js   Lanzadores clásicos (3 bots, una ventana cada uno)
 ```
 

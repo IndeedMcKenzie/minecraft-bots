@@ -9,6 +9,7 @@ const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const { loader: autoEat } = require('mineflayer-auto-eat')
 const cfg = require('../config')
+const stats = require('./stats')
 const {
   botOptions,
   setupBot,
@@ -141,6 +142,8 @@ async function workLoop(bot) {
       try {
         await bot.dig(oreBlock)
         console.log(`[Minero] ✅ Minado: ${oreBlock.name}`)
+        stats.add('miner', 'minerales')
+        stats.addDetail('minerales', oreBlock.name.replace(/^deepslate_/, '').replace(/_ore$/, ''))
       } catch (err) {
         console.warn(`[Minero] Error al picar mineral: ${err.message}`)
         markBad(bot, oreBlock.position)

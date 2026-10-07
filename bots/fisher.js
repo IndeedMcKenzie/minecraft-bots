@@ -8,6 +8,7 @@ const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalBlock } } = require('mineflayer-pathfinder')
 const { loader: autoEat } = require('mineflayer-auto-eat')
 const cfg = require('../config')
+const stats = require('./stats')
 const {
   botOptions,
   setupBot,
@@ -125,9 +126,16 @@ async function workLoop(bot) {
       if (bite) {
         failedCasts = 0
         await sleep(1500) // la captura vuela hacia el bot
-        const caught = diffInventory(before, inventoryCounts(bot))
+        const after = inventoryCounts(bot)
+        const caught = diffInventory(before, after)
         catches++
         console.log(`[Pescador] 🐟 Pescado: ${caught.length ? caught.join(', ') : 'algo (no llegó al inventario)'}`)
+        stats.add('fisher', 'capturas')
+        for (const [name, count] of Object.entries(after)) {
+          const gained = count - (before[name] || 0)
+          // Lo que llega por /give o del cofre no es pesca: solo contar si llegó tras la picada
+          if (gained > 0 && name !== ROD) stats.addDetail('pesca', name, gained)
+        }
       } else if (++failedCasts >= MAX_FAILED_CASTS) {
         console.log('[Pescador] 🤔 Varios lanzamientos sin picada, pruebo otro sitio...')
         markBad(bot, target)

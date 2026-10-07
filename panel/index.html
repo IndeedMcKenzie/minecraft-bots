@@ -20,6 +20,8 @@
     --health: #e0464e;
     --food: #c8822a;
     --log-bg: #ffffff;
+    --series-1: #2a78d6;      /* serie única de los gráficos (validada contra el fondo claro) */
+    --grid: #e6e8ec;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
@@ -38,6 +40,8 @@
       --health: #f0646b;
       --food: #e2a04c;
       --log-bg: #181a20;
+      --series-1: #3987e5;    /* mismo azul, paso para fondo oscuro (validado) */
+      --grid: #2c3039;
       color-scheme: dark;
     }
   }
@@ -230,6 +234,77 @@
   }
   .overlay strong { display: block; font-size: 18px; margin-bottom: 6px; }
 
+  /* ── Pestañas de vista ── */
+  .views { display: flex; gap: 4px; background: var(--surface-2); padding: 3px; border-radius: 8px; }
+  .view-tab { border: none; background: transparent; padding: 5px 12px; }
+  .view-tab.active { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+
+  /* ── Estadísticas ── */
+  .stats-view { overflow: auto; }
+  .stats-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .seg { display: flex; gap: 2px; background: var(--surface-2); padding: 3px; border-radius: 8px; }
+  .seg-btn { border: none; background: transparent; padding: 5px 12px; }
+  .seg-btn.active { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+  .muted { color: var(--muted); font-weight: 400; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .kpi .k-label { color: var(--muted); font-size: 12.5px; }
+  .kpi .k-value { font-size: 28px; font-weight: 650; line-height: 1.2; margin-top: 2px; }
+  .kpi .k-sub { color: var(--muted); font-size: 12px; margin-top: 2px; min-height: 1.2em; }
+
+  .panel-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px 14px;
+    min-width: 0;
+  }
+  .card-title { font-weight: 600; margin-bottom: 10px; }
+
+  .chart-wrap { position: relative; overflow-x: auto; }
+  .chart-wrap svg { display: block; width: 100%; min-width: 520px; height: 200px; }
+  .chart-wrap .axis-label { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart-wrap .gridline { stroke: var(--grid); stroke-width: 1; }
+  .chart-wrap .baseline { stroke: var(--border); stroke-width: 1; }
+  .chart-wrap .bar { fill: var(--series-1); }
+  .chart-wrap .hit { fill: transparent; cursor: default; }
+  .chart-wrap .bar.hover { opacity: .75; }
+  .chart-tip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 12px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25);
+    transform: translateX(-50%);
+  }
+  .chart-tip b { display: block; margin-bottom: 2px; }
+  .chart-empty { color: var(--muted); padding: 30px 0; text-align: center; }
+
+  .table-wrap { overflow-x: auto; }
+  .stats-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .stats-table th, .stats-table td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .stats-table th:first-child, .stats-table td:first-child { text-align: left; }
+  .stats-table th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .stats-table td { font-variant-numeric: tabular-nums; }
+  .stats-table tr:last-child td { border-bottom: none; }
+
+  .breakdowns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .hbars { display: grid; gap: 6px; }
+  .hbar { display: grid; grid-template-columns: minmax(80px, 34%) 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
+  .hbar .track { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+  .hbar .fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; }
+  .hbar .val { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 3ch; text-align: right; }
+
   @media (max-width: 600px) {
     header, main { padding-left: 16px; padding-right: 16px; }
   }
@@ -240,6 +315,10 @@
     <h1>🤖 Bots Minecraft</h1>
     <div class="server"><span class="dot" id="server-dot"></span><span id="server-text">Comprobando servidor…</span></div>
     <span class="meta" id="meta"></span>
+    <nav class="views" aria-label="Vistas">
+      <button class="view-tab active" data-view="bots">🤖 Bots</button>
+      <button class="view-tab" data-view="stats">📊 Estadísticas</button>
+    </nav>
     <div class="spacer"></div>
     <div class="actions">
       <button class="primary" data-all="start">▶ Iniciar todos</button>
@@ -248,7 +327,35 @@
     </div>
   </header>
 
-  <main>
+  <main id="view-stats" class="stats-view" hidden>
+    <div class="stats-head">
+      <div class="seg" role="group" aria-label="Periodo">
+        <button class="seg-btn active" data-period="session">Esta sesión</button>
+        <button class="seg-btn" data-period="total">Desde siempre</button>
+      </div>
+      <span class="meta" id="stats-since"></span>
+    </div>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="panel-card">
+      <div class="card-title">Objetos guardados en casa por hora <span class="muted">· últimas 24 h, todos los bots</span></div>
+      <div class="chart-wrap" id="hourly-chart"></div>
+    </section>
+
+    <section class="panel-card">
+      <div class="card-title">Por bot</div>
+      <div class="table-wrap"><table class="stats-table" id="bots-table"></table></div>
+    </section>
+
+    <section class="breakdowns">
+      <div class="panel-card"><div class="card-title">⛏️ Minerales por tipo</div><div class="hbars" id="bd-minerales"></div></div>
+      <div class="panel-card"><div class="card-title">🎣 Pesca</div><div class="hbars" id="bd-pesca"></div></div>
+      <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>
+    </section>
+  </main>
+
+  <main id="view-bots">
     <section class="cards" id="cards"></section>
 
     <section class="logs">
@@ -260,6 +367,7 @@
         <button class="tab" data-filter="farmer">🌾 Granjero</button>
         <button class="tab" data-filter="fisher">🎣 Pescador</button>
         <button class="tab" data-filter="organizer">🗂️ Organizador</button>
+        <button class="tab" data-filter="rancher">🐄 Ganadero</button>
         <button class="tab" data-filter="panel">Panel</button>
       </div>
       <div class="log-list" id="log-list"><div class="empty">Esperando registros…</div></div>
@@ -543,6 +651,229 @@ function showOverlay(title, text) {
   box.append(strong, document.createTextNode(text))
   o.appendChild(box)
   o.hidden = false
+}
+
+// ── Vistas (Bots / Estadísticas) ────────────────────────────
+let currentView = 'bots'
+let statsPeriod = 'session'
+let statsData = null
+let statsTimer = null
+
+document.querySelectorAll('[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentView = btn.dataset.view
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === btn))
+    $('#view-bots').hidden = currentView !== 'bots'
+    $('#view-stats').hidden = currentView !== 'stats'
+    clearInterval(statsTimer)
+    if (currentView === 'stats') {
+      loadStats()
+      statsTimer = setInterval(loadStats, 10000) // solo se consulta mientras la vista está abierta
+    }
+  })
+})
+
+document.querySelectorAll('[data-period]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    statsPeriod = btn.dataset.period
+    document.querySelectorAll('[data-period]').forEach(b => b.classList.toggle('active', b === btn))
+    if (statsData) renderStats()
+  })
+})
+
+// Abrir directamente en estadísticas con http://127.0.0.1:3000/#stats
+if (location.hash === '#stats') setTimeout(() => $('[data-view="stats"]').click(), 0)
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/stats', { cache: 'no-store' })
+    statsData = await res.json()
+    renderStats()
+  } catch {}
+}
+
+// ── Estadísticas: render ────────────────────────────────────
+const NUM = new Intl.NumberFormat('es')
+const fmtNum = n => NUM.format(Math.round(n || 0))
+
+const ITEM_NAMES = {
+  diamond: 'Diamante', emerald: 'Esmeralda', gold: 'Oro', iron: 'Hierro', coal: 'Carbón', copper: 'Cobre',
+  lapis: 'Lapislázuli', redstone: 'Redstone', nether_gold: 'Oro del Nether', nether_quartz: 'Cuarzo',
+  cod: 'Bacalao', salmon: 'Salmón', pufferfish: 'Pez globo', tropical_fish: 'Pez tropical',
+}
+const itemLabel = n => ITEM_NAMES[n] || (n.charAt(0).toUpperCase() + n.slice(1)).replace(/_/g, ' ')
+
+function fmtDuration(ms) {
+  const min = Math.floor((ms || 0) / 60000)
+  const h = Math.floor(min / 60)
+  return h > 0 ? `${h} h ${min % 60} min` : `${min} min`
+}
+
+function renderStats() {
+  const d = statsData
+  const src = statsPeriod === 'session' ? d.session : d.total
+  const b = src.bots || {}
+  const det = src.detail || {}
+  const get = (bot, k) => (b[bot] && b[bot][k]) || 0
+  const sumAll = k => Object.values(b).reduce((a, x) => a + (x[k] || 0), 0)
+
+  $('#stats-since').textContent = statsPeriod === 'session'
+    ? `Desde que se abrió el panel (${ago(src.since)})`
+    : `Desde ${new Date(src.since).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' })}`
+
+  // Fila de cifras clave
+  const kpis = [
+    { label: '🌲 Árboles talados', value: get('woodcutter', 'arboles') },
+    { label: '⛏️ Minerales extraídos', value: get('miner', 'minerales'), sub: `💎 ${fmtNum((det.minerales || {}).diamond)} diamantes` },
+    { label: '🌾 Cultivos cosechados', value: get('farmer', 'cosechas'), sub: `${fmtNum(get('farmer', 'siembras'))} sembrados` },
+    { label: '🎣 Capturas de pesca', value: get('fisher', 'capturas') },
+    { label: '🐄 Terneros nacidos', value: get('rancher', 'terneros'), sub: `${fmtNum(get('rancher', 'sacrificadas'))} sacrificadas` },
+    { label: '📦 Objetos guardados', value: sumAll('guardados'), sub: `${fmtNum(sumAll('viajes'))} viajes a casa` },
+    { label: '🗂️ Objetos ordenados', value: get('organizer', 'ordenados'), sub: `${fmtNum(get('organizer', 'rondas'))} rondas del organizador` },
+  ]
+  $('#kpis').replaceChildren(...kpis.map(k => {
+    const el = document.createElement('div')
+    el.className = 'kpi'
+    el.innerHTML = '<div class="k-label"></div><div class="k-value"></div><div class="k-sub"></div>'
+    el.querySelector('.k-label').textContent = k.label
+    el.querySelector('.k-value').textContent = fmtNum(k.value)
+    el.querySelector('.k-sub').textContent = k.sub || ''
+    return el
+  }))
+
+  renderHourly(d.total.hourly || {}, d.bots, d.now)
+  renderBotsTable(b, d.bots)
+  renderHBars($('#bd-minerales'), det.minerales)
+  renderHBars($('#bd-pesca'), det.pesca)
+  renderHBars($('#bd-almacen'), det.almacen)
+}
+
+function renderBotsTable(b, bots) {
+  const cols = [
+    ['Conectado', k => fmtDuration((b[k] || {}).conectadoMs)],
+    ['Guardados', k => fmtNum((b[k] || {}).guardados)],
+    ['Viajes a casa', k => fmtNum((b[k] || {}).viajes)],
+    ['Teletransportes', k => fmtNum((b[k] || {}).teletransportes)],
+    ['Atascos', k => fmtNum((b[k] || {}).atascos)],
+    ['Cofres creados', k => fmtNum((b[k] || {}).cofresCreados)],
+    ['Muertes', k => fmtNum((b[k] || {}).muertes)],
+    ['Expulsiones', k => fmtNum((b[k] || {}).expulsiones)],
+  ]
+  const table = $('#bots-table')
+  table.replaceChildren()
+  const head = table.createTHead().insertRow()
+  for (const h of ['Bot', ...cols.map(c => c[0])]) {
+    const th = document.createElement('th')
+    th.textContent = h
+    head.appendChild(th)
+  }
+  const body = table.createTBody()
+  for (const bot of bots) {
+    const row = body.insertRow()
+    row.insertCell().textContent = `${bot.emoji} ${bot.label}`
+    for (const [, fn] of cols) row.insertCell().textContent = fn(bot.key)
+  }
+}
+
+// Barras horizontales de una sola serie, de mayor a menor
+function renderHBars(container, obj) {
+  const entries = Object.entries(obj || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="chart-empty">Sin datos todavía</div>'
+    return
+  }
+  const max = entries[0][1]
+  container.replaceChildren(...entries.map(([name, v]) => {
+    const row = document.createElement('div')
+    row.className = 'hbar'
+    row.title = `${itemLabel(name)}: ${fmtNum(v)}`
+    row.innerHTML = '<span class="lbl"></span><div class="track"><div class="fill"></div></div><span class="val"></span>'
+    row.querySelector('.lbl').textContent = itemLabel(name)
+    row.querySelector('.fill').style.width = `${Math.max(2, (v / max) * 100)}%`
+    row.querySelector('.val').textContent = fmtNum(v)
+    return row
+  }))
+}
+
+// Columnas por hora (últimas 24 h) con tooltip que desglosa por bot
+function renderHourly(hourly, bots, now) {
+  const wrap = $('#hourly-chart')
+  const HOUR = 3600000
+  const lastHour = Math.floor(now / HOUR) * HOUR
+  const hours = Array.from({ length: 24 }, (_, i) => lastHour - (23 - i) * HOUR)
+  const series = hours.map(h => {
+    const per = hourly[h] || {}
+    return { h, per, total: Object.values(per).reduce((a, v) => a + v, 0) }
+  })
+  const maxVal = Math.max(...series.map(s => s.total))
+  if (maxVal === 0) {
+    wrap.innerHTML = '<div class="chart-empty">Todavía no hay objetos guardados en las últimas 24 h</div>'
+    return
+  }
+
+  // Escala "redonda" para el eje
+  const pow = Math.pow(10, Math.floor(Math.log10(maxVal)))
+  const top = [1, 2, 2.5, 5, 10].map(m => m * pow).find(v => v >= maxVal)
+  const W = 720, H = 200, L = 40, R = 8, T = 10, B = 24
+  const pw = W - L - R, ph = H - T - B
+  const step = pw / 24
+  const bw = Math.min(18, step * 0.62)
+  const y = v => T + ph - (v / top) * ph
+  const hourLabel = h => new Date(h).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Objetos guardados por hora en las últimas 24 horas">`
+  for (const v of [0, top / 2, top]) {
+    svg += `<line class="${v === 0 ? 'baseline' : 'gridline'}" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`
+    svg += `<text class="axis-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmtNum(v)}</text>`
+  }
+  series.forEach((s, i) => {
+    const cx = L + step * i + step / 2
+    if (i % 3 === 2 || i === 23) svg += `<text class="axis-label" x="${cx}" y="${H - 6}" text-anchor="middle">${hourLabel(s.h)}</text>`
+    if (s.total > 0) {
+      // Barra con extremo superior redondeado (4 px), anclada a la línea base
+      const x0 = cx - bw / 2, y0 = y(s.total), yb = y(0), r = Math.min(4, bw / 2, yb - y0)
+      svg += `<path class="bar" data-i="${i}" d="M${x0},${yb} V${y0 + r} Q${x0},${y0} ${x0 + r},${y0} H${x0 + bw - r} Q${x0 + bw},${y0} ${x0 + bw},${y0 + r} V${yb} Z"/>`
+    }
+    // Zona de interacción más grande que la barra (toda la columna)
+    svg += `<rect class="hit" data-i="${i}" x="${L + step * i}" y="${T}" width="${step}" height="${ph}"/>`
+  })
+  svg += '</svg>'
+  wrap.innerHTML = svg
+
+  const tip = document.createElement('div')
+  tip.className = 'chart-tip'
+  tip.hidden = true
+  wrap.appendChild(tip)
+  const label = Object.fromEntries(bots.map(b => [b.key, `${b.emoji} ${b.label}`]))
+
+  wrap.querySelectorAll('.hit').forEach(hit => {
+    hit.addEventListener('mouseenter', () => {
+      const i = Number(hit.dataset.i)
+      const s = series[i]
+      wrap.querySelectorAll('.bar').forEach(b => b.classList.toggle('hover', Number(b.dataset.i) === i))
+      tip.innerHTML = ''
+      const head = document.createElement('b')
+      head.textContent = `${hourLabel(s.h)}–${hourLabel(s.h + HOUR)} · ${fmtNum(s.total)} objetos`
+      tip.appendChild(head)
+      for (const [k, v] of Object.entries(s.per).sort((a, b) => b[1] - a[1])) {
+        const line = document.createElement('div')
+        line.textContent = `${label[k] || k}: ${fmtNum(v)}`
+        tip.appendChild(line)
+      }
+      // Arriba del área del gráfico (dentro del contenedor, para que no se recorte), sin salirse por los lados
+      tip.hidden = false
+      const svgEl = wrap.querySelector('svg')
+      const scale = svgEl.getBoundingClientRect().width / W
+      const half = tip.offsetWidth / 2
+      const cx = (L + step * i + step / 2) * scale
+      tip.style.left = `${Math.min(Math.max(cx, half + 2), svgEl.scrollWidth - half - 2)}px`
+      tip.style.top = '2px'
+    })
+    hit.addEventListener('mouseleave', () => {
+      tip.hidden = true
+      wrap.querySelectorAll('.bar.hover').forEach(b => b.classList.remove('hover'))
+    })
+  })
 }
 
 // ── Conexión en vivo ────────────────────────────────────────
