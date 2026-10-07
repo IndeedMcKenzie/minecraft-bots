@@ -81,8 +81,10 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
       movements.allow1by1towers = false // solo se activan durante un rescate
       movements.scafoldingBlocks = SCAFFOLD_ITEMS.map(n => mcData.itemsByName[n]?.id).filter(Boolean)
       bot.pathfinder.setMovements(movements)
-      // Presupuesto de CPU por tick para calcular rutas (el cálculo de rutas es lo que más CPU gasta)
-      bot.pathfinder.tickTimeout = (cfg.performance && cfg.performance.pathfinderTickMs) || 20
+      // Presupuesto de CPU por tick para calcular rutas (el cálculo de rutas es lo que más CPU gasta).
+      // Los bots que recorren terreno difícil necesitan más: con poco, calculan rutas a trozos y "dudan".
+      bot.pathfinder.tickTimeout = (botKey && cfg.bots[botKey]?.pathfinderTickMs) ||
+        (cfg.performance && cfg.performance.pathfinderTickMs) || 20
     }
 
     if (botKey && cfg.bots[botKey]?.stuckWatch) startStuckWatch(bot)

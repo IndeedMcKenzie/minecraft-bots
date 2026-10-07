@@ -179,7 +179,7 @@ Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo par
 | Sección | Opciones principales |
 |---|---|
 | `server` | `host`, `port`, `version` (protocolo que usa Mineflayer; ViaBackwards traduce), `viewDistance` (`short` por defecto) |
-| `performance` | `pathfinderTickMs` (20): CPU máxima por tick para calcular rutas; menos = menos CPU |
+| `performance` | `pathfinderTickMs` (20): CPU máxima por tick para calcular rutas. Minero y leñador usan 40 (`bots.<bot>.pathfinderTickMs`): con menos calculan rutas a trozos y se quedan «dudando» ante desniveles |
 | `panel` | `port` (3000), `autoStart` (iniciar bots al abrir el panel) |
 | `reconnect` | `enabled`, `delayMs` |
 | `search` | Radios: `woodRadius` 96, `mineRadius` 64, `farmRadius` 48, `chestRadius` 48 |

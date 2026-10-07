@@ -14,7 +14,9 @@ module.exports = {
   // Rendimiento
   performance: {
     // Milisegundos de cada tick (50 ms) que el pathfinder puede usar calculando rutas. El valor de
-    // fábrica es 40 (hasta 80% de un núcleo por bot mientras calcula). Menos = menos CPU, rutas más lentas.
+    // fábrica es 40 (hasta 80% de un núcleo por bot mientras calcula). Menos = menos CPU, pero rutas
+    // a trozos: con 20 el bot se queda "dudando" ante desniveles. Se puede fijar por bot con
+    // bots.<bot>.pathfinderTickMs (minero y leñador usan 40 porque recorren terreno difícil).
     pathfinderTickMs: 20,
   },
 
@@ -120,8 +122,8 @@ module.exports = {
   // viewDistance opcional por bot (sustituye a server.viewDistance).
   // give: lo que entrega el botón "Dar herramienta" del panel con /give (el bot debe ser OP).
   bots: {
-    woodcutter: { username: 'Bot_Lenador',  home: null, stuckWatch: true, give: [{ item: 'diamond_axe', count: 1 }] },
-    miner:      { username: 'Bot_Minero',   home: null, stuckWatch: true, give: [{ item: 'diamond_pickaxe', count: 1 }] },
+    woodcutter: { username: 'Bot_Lenador',  home: null, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_axe', count: 1 }] },
+    miner:      { username: 'Bot_Minero',   home: null, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_pickaxe', count: 1 }] },
     farmer:     { username: 'Bot_Granjero', home: null, give: [{ item: 'diamond_hoe', count: 1 }, { item: 'wheat_seeds', count: 32 }] },
     fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 'tiny' }, // no explora: carga menos chunks
     organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, viewDistance: 'tiny' }, // su casa es el almacén central (la eliges tú)
