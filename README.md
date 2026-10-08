@@ -76,7 +76,7 @@ UI at `http://127.0.0.1:3000`.
 
 ### Each bot card shows
 - Status (online / connecting / reconnecting / stopped), current activity and red warnings.
-- ❤️ health, 🍗 food, 📍 position, 🎒 free slots and 🏠 home (with `N/15` chests).
+- ❤️ health, 📍 position, 🎒 free slots and 🏠 home (with `N/15` chests).
 - **Full inventory:** chips with 🔒 are the **reserve** the bot keeps on purpose when storing (tool,
   seeds…). `cobblestone ×39 (🔒32)` means it keeps 32 and will store 7.
 - `📦 N to store · last stored X ago`.

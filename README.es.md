@@ -72,7 +72,7 @@ la interfaz en `http://127.0.0.1:3000`.
 
 ### Cada tarjeta de bot muestra
 - Estado (Activo / Conectando / Reconectando / Detenido), actividad actual y avisos en rojo.
-- ❤️ Vida, 🍗 hambre, 📍 posición, 🎒 huecos libres y 🏠 casa (con `N/15 cofres`).
+- ❤️ Vida, 📍 posición, 🎒 huecos libres y 🏠 casa (con `N/15 cofres`).
 - **Inventario completo:** las fichas con 🔒 son la **reserva** que se queda a propósito al guardar
   (herramienta, semillas…). `cobblestone ×39 (🔒32)` significa que se queda 32 y guardará 7.
 - `📦 N por guardar · último guardado hace X`.

@@ -18,7 +18,6 @@
     --err: #d33c3c;
     --idle: #9aa2b1;
     --health: #e0464e;
-    --food: #c8822a;
     --log-bg: #ffffff;
     --series-1: #2a78d6;      /* serie única de los gráficos (validada contra el fondo claro) */
     --grid: #e6e8ec;
@@ -38,7 +37,6 @@
       --err: #f06565;
       --idle: #6c7486;
       --health: #f0646b;
-      --food: #e2a04c;
       --log-bg: #181a20;
       --series-1: #3987e5;    /* mismo azul, paso para fondo oscuro (validado) */
       --grid: #2c3039;
@@ -164,7 +162,6 @@
   .bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
   .bar > span { display: block; height: 100%; width: 0; border-radius: 4px; transition: width .4s; }
   .bar.health > span { background: var(--health); }
-  .bar.food > span { background: var(--food); }
   .bar-row .num { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
   .facts { display: grid; grid-template-columns: 18px 1fr; gap: 3px 8px; font-size: 13px; }
@@ -554,7 +551,6 @@ function createCard(b) {
     <div class="issue" hidden></div>
     <div class="alerts"></div>
     <div class="bar-row" title="Vida"><span>❤️</span><div class="bar health"><span></span></div><span class="num hp"></span></div>
-    <div class="bar-row" title="Hambre"><span>🍗</span><div class="bar food"><span></span></div><span class="num fd"></span></div>
     <div class="facts">
       <span title="Posición">📍</span><span class="v pos"></span>
       <span title="Inventario">🎒</span><span class="v slots"></span>
@@ -610,9 +606,7 @@ function updateCard(el, b) {
   el.classList.toggle('caution', !!worst && worst.level === 'warn')
 
   $('.bar.health > span', el).style.width = online ? `${(b.health / 20) * 100}%` : '0'
-  $('.bar.food > span', el).style.width = online ? `${(b.food / 20) * 100}%` : '0'
   $('.hp', el).textContent = online ? `${b.health}/20` : '—'
-  $('.fd', el).textContent = online ? `${b.food}/20` : '—'
 
   $('.pos', el).textContent = fmtPos(b.pos)
   const slots = $('.slots', el)

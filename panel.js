@@ -190,7 +190,6 @@ function botState(def) {
     issue: (ctrl && ctrl.issue) || null,
     activity: activity[def.key] || null,
     health: online ? Math.round(bot.health) : null,
-    food: online ? Math.round(bot.food) : null,
     pos: online ? { x: Math.floor(bot.entity.position.x), y: Math.floor(bot.entity.position.y), z: Math.floor(bot.entity.position.z) } : null,
     freeSlots: online ? bot.inventory.emptySlotCount() : null,
     items: inv.items,
