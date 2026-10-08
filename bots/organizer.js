@@ -15,6 +15,8 @@ const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
+const inventory = require('./inventory')
+const { fetchFromWarehouse, displayCat } = require('./warehouse')
 const {
   botOptions,
   setupBot,
@@ -24,6 +26,8 @@ const {
   waitUntil,
   activeBots,
   depositNoMerge,
+  setIssue,
+  clearIssue,
   sleep,
   fmtPos,
 } = require('./common')
@@ -38,6 +42,9 @@ const RING_STEP = 6 // cuánto crece el radio del almacén cada vez que se queda
 const SUPPLIES = ['chest', 'oak_sign'] // lo que usa para ampliar el almacén; no es carga
 const SUPPLY_STOCK = 4                  // cofres y carteles que se da al empezar cada ronda
 const FREE_SLOTS_RESERVE = 2            // huecos que deja libres al recoger, para que /give siempre quepa
+const SPOT_TRIES = 15                   // huecos que prueba para un cofre nuevo antes de rendirse
+const BAD_SPOT_MS = 30 * 60 * 1000     // un hueco donde falló no se vuelve a probar en este tiempo
+const SCAN_EVERY_MS = 2 * 60 * 60 * 1000 // escaneo completo del inventario del almacén (además de lo que ve al guardar)
 
 // "*_log" → /^.*_log$/
 function wildcardToRegex(pattern) {
@@ -80,13 +87,21 @@ async function workLoop(bot) {
 
   while (!bot.stopped) {
     try {
-      // Órdenes del panel: "Organizar ahora" hace una ronda; "Volver a casa"/"Rescatar" vuelven al almacén
+      // Órdenes del panel: "Organizar ahora" hace una ronda; "Volver a casa"/"Rescatar" vuelven al almacén.
+      // Un pedido no se pierde aunque otra orden lo haya pisado: se atiende después.
+      if (!bot.pendingCommand && bot.pendingRequest) bot.pendingCommand = 'request'
       const cmd = bot.pendingCommand
       if (cmd) {
         bot.pendingCommand = null
         if (cmd === 'organize') {
           await organizeRound(bot)
           nextRound = Date.now() + orgCfg.intervalMinutes * 60 * 1000
+        } else if (cmd === 'scan') {
+          await scanInventory(bot)
+        } else if (cmd === 'request') {
+          const req = bot.pendingRequest
+          bot.pendingRequest = null
+          await deliverRequest(bot, req)
         } else if (cargo(bot).length > 0) {
           await deliver(bot)
         } else if (bot.home) {
@@ -98,6 +113,8 @@ async function workLoop(bot) {
       if (Date.now() >= nextRound) {
         await organizeRound(bot)
         nextRound = Date.now() + orgCfg.intervalMinutes * 60 * 1000
+        const last = inventory.summary().lastScan
+        if (!bot.pendingCommand && (!last || Date.now() - last > SCAN_EVERY_MS)) await scanInventory(bot)
       }
       await sleep(2000)
     } catch (err) {
@@ -183,7 +200,100 @@ function finishRound(bot) {
   const s = bot.roundStats
   stats.add('organizer', 'rondas')
   stats.add('organizer', 'recogidos', s.collected)
+  if (bot.fullCats && bot.fullCats.size > 0) setIssue(bot, 'fullCats', 'warn', `Almacén sin sitio para: ${[...bot.fullCats].join(', ')} (se quedan en las casas)`)
+  else clearIssue(bot, 'fullCats')
   console.log(`[Organizador] ✅ Ronda terminada: ${s.collected} objetos recogidos, ${s.sorted} ordenados en el almacén.`)
+}
+
+// ── Inventario del almacén y pedidos ─────────────────────────
+
+/** Abre todos los cofres del almacén y apunta lo que hay (para la pestaña Almacén del panel). */
+async function scanInventory(bot) {
+  if (!bot.home || !await teleportTo(bot, bot.home)) return
+  bot.scanning = true
+  try {
+    const warehouse = scanWarehouse(bot)
+    const positions = []
+    const seen = new Set() // la otra mitad de un cofre doble ya revisado no hace falta abrirla
+    let opened = 0
+    console.log('[Organizador] 📋 Revisando el contenido del almacén...')
+    for (const [key, chests] of warehouse.byCategory) {
+      for (const chest of chests) {
+        if (bot.stopped || bot.pendingCommand) return // interrumpido: el escaneo queda a medias
+        positions.push(chest)
+        const chestId = inventory.chestKey(chest)
+        if (seen.has(chestId)) continue
+        seen.add(chestId)
+        if (!await approach(bot, chest)) continue
+        try {
+          const container = await openContainer(bot, chest)
+          inventory.recordChest(chest, displayCat(key), container.containerItems())
+          try { container.close() } catch {}
+          opened++
+        } catch {}
+        await sleep(250)
+      }
+    }
+    inventory.finishScan(positions)
+    console.log(`[Organizador] 📋 Inventario del almacén actualizado: ${opened} cofres revisados.`)
+  } finally {
+    bot.scanning = false
+  }
+}
+
+/** Pedido del panel: saca `count` de `item` del almacén y se lo lleva al jugador con /tp. */
+async function deliverRequest(bot, req) {
+  if (!req) return
+  const { item, count, player } = req
+  const pretty = item.replace(/_/g, ' ')
+  if (!bot.home) {
+    console.warn('[Organizador] 📦 Pedido cancelado: no tengo almacén (usa "Fijar casa").')
+    return
+  }
+  bot.delivering = req
+  try {
+    if (cargo(bot).length > 0) await deliver(bot) // vaciar antes lo que llevara
+    console.log(`[Organizador] 📦 Pedido: ${count} × ${pretty} para ${player}. Buscándolo en el almacén...`)
+    const cats = [...new Set([categoryOf(item), ...inventory.catsWith(item)].filter(Boolean))]
+    const got = await fetchFromWarehouse(bot, [{ test: n => n === item, max: count, cats }], 'Organizador')
+    const n = got[item] || 0
+    if (n === 0) {
+      console.warn(`[Organizador] 📦 Pedido: no encontré ${pretty} en el almacén.`)
+      return
+    }
+    if (!bot.players[player]) {
+      console.warn(`[Organizador] 📦 Pedido: ${player} ya no está conectado. Devuelvo ${pretty} al almacén.`)
+      return
+    }
+
+    bot.chat(`/tp ${bot.username} ${player}`)
+    const near = () => {
+      const e = bot.players[player] && bot.players[player].entity
+      return e && e.position.distanceTo(bot.entity.position) < 6
+    }
+    if (!await waitUntil(near, 6000)) {
+      console.warn(`[Organizador] 📦 Pedido: no pude llegar hasta ${player} con /tp. Devuelvo ${pretty} al almacén.`)
+      return
+    }
+    await sleep(800) // que carguen los chunks y el jugador se vea bien
+    const target = bot.players[player].entity
+    await bot.lookAt(target.position.offset(0, 1.2, 0), true)
+    for (const stack of bot.inventory.items().filter(i => i.name === item)) {
+      await bot.tossStack(stack)
+      await sleep(150)
+    }
+    console.log(`[Organizador] 📦 Pedido entregado: ${n} × ${pretty} a ${player}${n < count ? ` (solo había ${n} de ${count})` : ''}.`)
+    stats.add('organizer', 'pedidos')
+    stats.addDetail('pedidos', item, n)
+    await sleep(1500)
+  } catch (err) {
+    console.warn(`[Organizador] 📦 Pedido fallido: ${err.message}`)
+  } finally {
+    bot.delivering = null
+    // Lo que no se entregó vuelve a su cofre
+    await teleportTo(bot, bot.home)
+    if (cargo(bot).length > 0) await sortIntoWarehouse(bot)
+  }
 }
 
 // ── Material y buzón ─────────────────────────────────────────
@@ -475,6 +585,7 @@ async function depositVerified(bot, cat, chest) {
           if (e.message && e.message.includes('destination full')) { chestFull = true; break }
         }
       }
+      inventory.recordChest(chest, cat, container.containerItems())
       try { container.close() } catch {}
     } catch (err) {
       console.warn(`[Organizador] No pude abrir el cofre ${fmtPos(chest.position)}: ${err.message}`)
@@ -564,9 +675,17 @@ async function createCategoryChest(bot, cat, warehouse) {
   if (!await giveSelf(bot, 'chest') || !await giveSelf(bot, 'oak_sign')) return false
 
   const sameCat = warehouse.byCategory.get(normalize(cat)) || []
-  for (const spot of findWarehouseSpots(bot, sameCat).slice(0, 6)) {
+  // Los huecos donde ya falló (inaccesibles o donde no se pudo colocar) se descartan un rato,
+  // para no reintentar siempre los mismos y probar otros
+  if (!bot.badSpots) bot.badSpots = new Map()
+  const now = Date.now()
+  for (const [k, until] of bot.badSpots) if (until < now) bot.badSpots.delete(k)
+  const candidates = findWarehouseSpots(bot, sameCat, p => !bot.badSpots.has(p.toString())).slice(0, SPOT_TRIES)
+  for (const spot of candidates) {
+    if (bot.stopped) return false
+    const fail = () => bot.badSpots.set(spot.toString(), Date.now() + BAD_SPOT_MS)
     const ground = bot.blockAt(spot.offset(0, -1, 0))
-    if (!await approach(bot, ground)) continue
+    if (!await approach(bot, ground)) { fail(); continue }
     const feet = bot.entity.position.floored()
     if (feet.equals(spot) || feet.offset(0, 1, 0).equals(spot)) continue
 
@@ -577,7 +696,7 @@ async function createCategoryChest(bot, cat, warehouse) {
     } catch {}
     await sleep(300)
     const chest = bot.blockAt(spot)
-    if (!chest || chest.name !== 'chest') continue
+    if (!chest || chest.name !== 'chest') { fail(); continue }
 
     // 2. Cartel encima (agachado, para que el clic no abra el cofre)
     await placeSign(bot, chest, cat)
@@ -636,10 +755,10 @@ async function giveSelf(bot, itemName, count = 1) {
  * del almacén: aire con aire encima (para el cartel), suelo firme y sin cofres pegados (así no se unen en
  * cofres dobles de distinta categoría). Prioriza los cercanos a cofres de la misma categoría.
  */
-function findWarehouseSpots(bot, sameCategoryChests) {
+function findWarehouseSpots(bot, sameCategoryChests, usable = () => true) {
   // Empezar por el radio actual y, si no hay hueco, ampliar en anillos hasta maxWarehouseRadius
   for (let R = warehouseRadius(bot); R <= orgCfg.maxWarehouseRadius; R += RING_STEP) {
-    const spots = warehouseSpotsWithin(bot, sameCategoryChests, R)
+    const spots = warehouseSpotsWithin(bot, sameCategoryChests, R).filter(usable)
     if (spots.length > 0) {
       if (R > warehouseRadius(bot)) console.log(`[Organizador] 📐 Amplío el almacén hasta ${R} bloques de radio.`)
       return spots

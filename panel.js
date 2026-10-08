@@ -9,6 +9,8 @@ const path = require('path')
 const util = require('util')
 const cfg = require('./config')
 const stats = require('./bots/stats')
+const { createAlerts } = require('./panel/alerts')
+const inventory = require('./bots/inventory')
 
 const PORT = (cfg.panel && cfg.panel.port) || 3000
 const MAX_LOGS = 500
@@ -100,6 +102,31 @@ async function restartBot(key) {
   startBot(key)
 }
 
+// ── Alertas ──────────────────────────────────────────────────
+function statusOf(key) {
+  const ctrl = ctrls[key]
+  const bot = ctrl && ctrl.bot
+  if (!ctrl || !ctrl.enabled) return 'stopped'
+  if (bot && bot.entity && !bot.stopped) return 'online'
+  return bot && bot.stopped ? 'reconnecting' : 'connecting'
+}
+
+const alerts = createAlerts({
+  keys: BOT_DEFS.map(d => d.key),
+  getInfo: key => {
+    const ctrl = ctrls[key]
+    const bot = ctrl && ctrl.bot
+    return { status: statusOf(key), enabled: !!(ctrl && ctrl.enabled), bot, issue: ctrl && ctrl.issue, homeFull: !!(bot && bot.homeFull) }
+  },
+  // Cada alerta nueva o resuelta queda también en el registro del bot
+  onChange: (key, alert, appeared) => {
+    const label = DEF_BY_KEY[key].label
+    if (appeared) console.warn(`[${label}] 🚨 Alerta: ${alert.text}`)
+    else console.log(`[${label}] ✅ Resuelto: ${alert.text}`)
+  },
+})
+const evaluateAlerts = () => { for (const d of BOT_DEFS) alerts.evaluate(d.key) }
+
 // ── Estado ───────────────────────────────────────────────────
 let serverOnline = null
 
@@ -138,12 +165,7 @@ function inventoryInfo(bot) {
 function botState(def) {
   const ctrl = ctrls[def.key]
   const bot = ctrl && ctrl.bot
-  let status = 'stopped'
-  if (ctrl && ctrl.enabled) {
-    if (bot && bot.entity && !bot.stopped) status = 'online'
-    else if (bot && bot.stopped) status = 'reconnecting'
-    else status = 'connecting'
-  }
+  const status = statusOf(def.key)
   const online = status === 'online'
   const home = (bot && bot.home) || savedHome(def.key)
   const inv = online ? inventoryInfo(bot) : { items: [], pending: null }
@@ -167,6 +189,7 @@ function botState(def) {
     rescuing: online && bot.pendingCommand === 'escape',
     organizing: online && (bot.pendingCommand === 'organize' || !!bot.organizing),
     homeFull: online && !!bot.homeFull,
+    alerts: alerts.current(def.key),
     homeChests: (bot && bot.homeChestCount) || null,
     maxChests: (cfg.home && cfg.home.maxChests) || 15,
     gifts: (cfg.bots[def.key].give || []).map(g => g.item.replace(/_/g, ' ') + (g.count > 1 ? ` ×${g.count}` : '')).join(', '),
@@ -180,6 +203,7 @@ function getState() {
     server: { host: cfg.server.host, port: cfg.server.port, online: serverOnline },
     startedAt,
     memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    map: (cfg.panel && cfg.panel.bluemapUrl) || null,
     bots: BOT_DEFS.map(botState),
   }
 }
@@ -188,6 +212,75 @@ function broadcast(event, data) {
   if (sseClients.size === 0) return
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
   for (const res of sseClients) res.write(msg)
+}
+
+// ── Almacén: inventario y pedidos ────────────────────────────
+const BOT_USERNAMES = new Set(BOT_DEFS.map(d => cfg.bots[d.key].username))
+const MAX_REQUEST = 27 * 64 // un inventario lleno como mucho
+
+function onlineBot(key) {
+  const bot = ctrls[key] && ctrls[key].enabled && ctrls[key].bot
+  return bot && bot.entity && !bot.stopped ? bot : null
+}
+
+// Jugadores conectados que no son bots (los ve cualquier bot conectado)
+function onlinePlayers() {
+  const bot = BOT_DEFS.map(d => onlineBot(d.key)).find(Boolean)
+  return bot ? Object.keys(bot.players).filter(n => !BOT_USERNAMES.has(n)).sort() : []
+}
+
+function warehouseState() {
+  const org = onlineBot('organizer')
+  const req = org && (org.delivering || org.pendingRequest)
+  return {
+    ...inventory.summary(),
+    players: onlinePlayers(),
+    organizer: {
+      online: !!org,
+      hasHome: !!(org && org.home),
+      scanning: !!(org && (org.scanning || org.pendingCommand === 'scan')),
+      organizing: !!(org && (org.organizing || org.pendingCommand === 'organize')),
+      request: req ? { item: req.item, count: req.count, player: req.player, started: !!org.delivering } : null,
+    },
+  }
+}
+
+function readJson(req, limit = 4096) {
+  return new Promise((resolve) => {
+    let body = ''
+    req.on('data', chunk => {
+      body += chunk
+      if (body.length > limit) { resolve(null); req.destroy() }
+    })
+    req.on('end', () => { try { resolve(JSON.parse(body)) } catch { resolve(null) } })
+  })
+}
+
+async function handleWarehouse(req, res, action) {
+  const org = onlineBot('organizer')
+  if (!org) return sendJson(res, 409, { ok: false, error: 'El Organizador no está conectado' })
+  if (!org.home) return sendJson(res, 409, { ok: false, error: 'El Organizador no tiene almacén: usa "Fijar casa" junto a un cofre' })
+  const common = require('./bots/common')
+
+  if (action === 'scan') {
+    if (org.delivering || org.pendingRequest) return sendJson(res, 409, { ok: false, error: 'El Organizador está con un pedido; espera a que termine' })
+    common.requestCommand(org, 'scan')
+    return sendJson(res, 200, { ok: true, message: 'Organizador: revisando todos los cofres del almacén' })
+  }
+  if (action === 'request') {
+    const body = await readJson(req)
+    const item = body && String(body.item || '')
+    const count = body && Math.floor(Number(body.count))
+    const player = body && String(body.player || '')
+    if (!/^[a-z0-9_]{1,64}$/.test(item)) return sendJson(res, 400, { ok: false, error: 'Objeto no válido' })
+    if (!(count >= 1 && count <= MAX_REQUEST)) return sendJson(res, 400, { ok: false, error: `Cantidad entre 1 y ${MAX_REQUEST}` })
+    if (!onlinePlayers().includes(player)) return sendJson(res, 409, { ok: false, error: 'Ese jugador no está conectado al servidor' })
+    if (org.delivering || org.pendingRequest) return sendJson(res, 409, { ok: false, error: 'El Organizador ya está con otro pedido; espera a que termine' })
+    org.pendingRequest = { item, count, player }
+    common.requestCommand(org, 'request')
+    return sendJson(res, 200, { ok: true, message: `Pedido en marcha: ${count} × ${item.replace(/_/g, ' ')} para ${player}` })
+  }
+  sendJson(res, 400, { ok: false, error: 'Acción desconocida' })
 }
 
 // ── Servidor HTTP ────────────────────────────────────────────
@@ -248,7 +341,21 @@ async function handleAction(res, key, action) {
   sendJson(res, 200, { ok: true })
 }
 
+// Quién puede usar el panel: este PC siempre; desde la red, solo las IPs de panel.allowedIps
+const ALLOWED_IPS = new Set((cfg.panel && cfg.panel.allowedIps) || [])
+// Las IPs del propio PC (p. ej. abrir http://192.168.1.10:3000 desde aquí mismo)
+const OWN_IPS = new Set(Object.values(require('os').networkInterfaces()).flat().filter(Boolean).map(i => i.address))
+function clientAllowed(req) {
+  const ip = (req.socket.remoteAddress || '').replace(/^::ffff:/, '')
+  return ip === '127.0.0.1' || ip === '::1' || OWN_IPS.has(ip) || ALLOWED_IPS.has(ip)
+}
+
 const server = http.createServer((req, res) => {
+  if (!clientAllowed(req)) {
+    console.warn(`[Panel] ⛔ Acceso denegado desde ${req.socket.remoteAddress} (no está en panel.allowedIps)`)
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
+    return res.end('Acceso denegado: este equipo no está autorizado en config.js (panel.allowedIps).')
+  }
   const url = new URL(req.url, 'http://127.0.0.1')
   const parts = url.pathname.split('/').filter(Boolean)
 
@@ -271,6 +378,8 @@ const server = http.createServer((req, res) => {
     })
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/warehouse') return sendJson(res, 200, warehouseState())
+
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' })
     res.write(`event: init\ndata: ${JSON.stringify({ logs, state: getState() })}\n\n`)
@@ -285,6 +394,7 @@ const server = http.createServer((req, res) => {
     if (req.headers['x-panel'] !== '1') return sendJson(res, 403, { ok: false, error: 'Prohibido' })
 
     if (parts[0] === 'api' && parts[1] === 'bots' && parts.length === 4) return handleAction(res, parts[2], parts[3])
+    if (parts[0] === 'api' && parts[1] === 'warehouse' && parts.length === 3) return handleWarehouse(req, res, parts[2])
     if (parts[0] === 'api' && parts[1] === 'all' && parts.length === 3) {
       for (const d of BOT_DEFS) {
         if (parts[2] === 'start') startBot(d.key)
@@ -309,11 +419,18 @@ server.on('error', (err) => {
   originalConsole.error(err)
 })
 
-server.listen(PORT, '127.0.0.1', () => {
+const HOST = (cfg.panel && cfg.panel.host) || '127.0.0.1'
+server.listen(PORT, HOST, () => {
   console.log(`[Panel] 🖥️ Panel en http://127.0.0.1:${PORT}`)
+  if (HOST !== '127.0.0.1') {
+    const lan = Object.values(require('os').networkInterfaces()).flat()
+      .filter(i => i && i.family === 'IPv4' && !i.internal).map(i => `http://${i.address}:${PORT}`)
+    console.log(`[Panel] 🌐 En la red: ${lan.join(' · ')} (permitido desde: ${[...ALLOWED_IPS].join(', ') || 'nadie más'})`)
+  }
   checkServer()
   setInterval(checkServer, SERVER_CHECK_MS)
   setInterval(() => broadcast('state', getState()), STATE_INTERVAL_MS)
+  setInterval(evaluateAlerts, 10000)
   // Tiempo conectado de cada bot (para las estadísticas)
   setInterval(() => {
     for (const d of BOT_DEFS) {

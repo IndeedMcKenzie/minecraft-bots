@@ -25,6 +25,8 @@ const {
   inStuckZone,
   inReach,
   teleportTo,
+  setIssue,
+  clearIssue,
   sleep,
   fmtPos,
 } = require('./common')
@@ -96,8 +98,9 @@ async function workLoop(bot) {
       // 3. Equipar hacha si existe (si no, talará con la mano vacía)
       const hasAxe = await equipBestTool(bot, AXES)
       if (!hasAxe) {
+        setIssue(bot, 'tool', 'warn', 'Sin hacha: tala a mano, mucho más lento')
         console.log('[Leñador] ✊ Sin hacha en inventario. Talando con las manos...')
-      }
+      } else clearIssue(bot, 'tool')
 
       // 4. Buscar árbol cercano
       const logIds = LOG_TYPES.map(n => mcData.blocksByName[n]?.id).filter(Boolean)

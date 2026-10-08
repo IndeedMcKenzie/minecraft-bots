@@ -18,6 +18,8 @@ const {
   equipBestTool,
   returnHomeAndDeposit,
   runPendingCommand,
+  setIssue,
+  clearIssue,
   isInventoryFull,
   withdrawToolsFromChest,
   collectNearbyItems,
@@ -108,12 +110,14 @@ async function workLoop(bot) {
       // ── 4. Comprobar si tenemos pico disponible ──────────────
       const hasPick = await equipBestTool(bot, PICKAXES)
       if (!hasPick) {
+        setIssue(bot, 'tool', 'err', 'Sin pico: no puede minar hasta que haya uno en su cofre')
         console.log('[Minero] ⚠️ Sin pico en inventario ni en cofres. Esperando pico...')
         bot.idle = true // espera a propósito: que el detector de atascos no lo confunda
         await sleep(10000)
         continue
       }
       bot.idle = false
+      clearIssue(bot, 'tool')
 
       // ── 5. Buscar el mejor mineral que el pico actual pueda extraer ──
       const oreBlock = findBestOre(bot, mcData, bot.heldItem?.type)

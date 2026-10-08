@@ -22,8 +22,13 @@ module.exports = {
 
   // Panel de control (node panel.js / abrir_panel.bat)
   panel: {
-    port: 3000,          // http://127.0.0.1:3000 (solo accesible desde este PC)
+    port: 3000,          // http://127.0.0.1:3000 en este PC
+    // Acceso desde la red local: '0.0.0.0' escucha en la red; '127.0.0.1' = solo este PC.
+    // El panel no tiene contraseña: solo se aceptan este PC y las IPs de allowedIps.
+    host: '0.0.0.0',
+    allowedIps: ['192.168.1.9'], // tu otra PC (http://192.168.1.10:3000)
     autoStart: true,     // Iniciar los bots al abrir el panel
+    bluemapUrl: 'http://127.0.0.1:8100', // Pestaña 🗺️ Mapa (web de BlueMap). null = sin pestaña
   },
 
   // Comportamientos globales

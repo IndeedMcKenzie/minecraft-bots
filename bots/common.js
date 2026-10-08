@@ -740,6 +740,19 @@ function findChestSpots(bot, existing) {
 // El panel deja la orden en bot.pendingCommand; cada bot la ejecuta al inicio de su bucle de trabajo.
 // Mientras tanto safeGoto devuelve false al momento, así la tarea en curso termina rápido.
 
+// ── Avisos para el panel ─────────────────────────────────────
+// Un bot avisa de un problema que le impide trabajar bien (sin herramienta, sin combustible…).
+// El panel los muestra en su tarjeta como alertas; se quitan solos cuando el bot los resuelve.
+function setIssue(bot, id, level, text) {
+  if (!bot.issues) bot.issues = new Map()
+  const prev = bot.issues.get(id)
+  bot.issues.set(id, { level, text, since: prev && prev.text === text ? prev.since : Date.now() })
+}
+
+function clearIssue(bot, id) {
+  if (bot.issues) bot.issues.delete(id)
+}
+
 function requestCommand(bot, type) {
   bot.pendingCommand = type
   haltPathfinder(bot)
@@ -1129,6 +1142,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
+  setIssue, clearIssue,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos
 }

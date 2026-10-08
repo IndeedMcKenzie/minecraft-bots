@@ -62,7 +62,12 @@ the 1.21.4 protocol).
 ## 🖥️ Control panel
 
 `abrir_panel.bat` (or `npm start`) runs all 7 bots in **a single process** (`panel.js`, less RAM) and serves the
-UI at `http://127.0.0.1:3000`, reachable only from the same PC.
+UI at `http://127.0.0.1:3000`.
+
+- **From another computer on your network:** set `panel.host: '0.0.0.0'` in `config.js` and add its IP to
+  `panel.allowedIps`, then open `http://<this PC's IP>:3000`. The panel **has no password**: any IP not on the
+  list gets "access denied". On Windows, allow port 3000 for that IP in the firewall. With
+  `panel.host: '127.0.0.1'` it only opens on this PC.
 
 - If the panel is already running, the `.bat` just reopens the window.
 - **Closing the window does NOT stop the bots.** They keep running in a minimized process.
@@ -75,7 +80,7 @@ UI at `http://127.0.0.1:3000`, reachable only from the same PC.
 - **Full inventory:** chips with 🔒 are the **reserve** the bot keeps on purpose when storing (tool, food,
   seeds…). `cobblestone ×39 (🔒32)` means it keeps 32 and will store 7.
 - `📦 N to store · last stored X ago`.
-- A **📦 home chests full** warning when nothing else fits.
+- **Alerts** (see below); the card border turns yellow or red when it has any.
 
 ### Per-bot buttons
 | Button | What it does |
@@ -88,6 +93,30 @@ UI at `http://127.0.0.1:3000`, reachable only from the same PC.
 | 🗂️ Organizar ahora | Organizer only: run a collect-and-sort round now |
 
 The **log** at the bottom can be filtered per bot.
+
+### 🚨 Alerts
+The panel watches every bot and warns on its card (and in the header: `⚠️ N alertas`; clicking it takes you to the bot):
+
+| Alert | When |
+|---|---|
+| 🚨 Offline | Not connected for over 2 min while enabled |
+| ⚠️ Low output | 0 trees / ores in 20 min, 0 catches in 10, 0 harvests in 30, 0 smelted in 45, no organizer round within twice its interval |
+| ⚠️ Stuck | 3 or more times in 30 min |
+| ⚠️ Died | Within the last 15 min |
+| ⚠️ Home chests full | Nothing else fits at home |
+| Bot reports | No pickaxe / axe / rod, no fuel for the furnaces, couldn't deliver a spare tool, no room in the warehouse for a category… |
+
+They clear themselves once solved. Every alert that appears or clears is also written to that bot's log.
+
+### 📦 Warehouse tab
+What's stored in the organizer's warehouse (or open `http://127.0.0.1:3000/#almacen`):
+- **Search** (Spanish words work too: "diamante", "hierro", "madera"…) and a category filter.
+- Updated whenever a bot opens a warehouse chest, plus a **full check** every 2 h or when you press
+  **🔄 Revisar almacén** (handy if you take or add things by hand).
+- **Pedir (order):** pick an amount and a player; the **organizer** takes it from the warehouse, teleports
+  next to you and drops it. You must be online. If it's mid-round, the round is paused and resumed later.
+
+Saved to `data/almacen_inventario.json`.
 
 ### 📊 Statistics tab
 Switch between **🤖 Bots** and **📊 Estadísticas** at the top (or open `http://127.0.0.1:3000/#stats`),
@@ -265,9 +294,11 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 abrir_panel.bat        Opens the panel on Windows (recommended)
 panel.js               Manager for the 7 bots + panel server (127.0.0.1:3000)
 panel/index.html       Panel UI
+panel/alerts.js        Bot alerts
 config.js              All the configuration
 bots/common.js         Shared logic: home, travel, chests, rescue, panel commands, /give, /tp
 bots/stats.js          Statistics counters
+bots/inventory.js      Warehouse inventory (what each chest holds)
 bots/woodcutter.js     Woodcutter
 bots/miner.js          Miner
 bots/farmer.js         Farmer
@@ -275,12 +306,13 @@ bots/fisher.js         Fisher
 bots/organizer.js      Organizer
 bots/rancher.js        Rancher
 bots/artisan.js        Artisan (furnaces + tools)
-bots/warehouse.js      Warehouse access (used by the artisan)
+bots/warehouse.js      Warehouse access (used by the artisan and orders)
 data/                  Your world's data (created automatically, not committed):
   home_<bot>.json        each bot's home
   almacen.json           category of each organizer chest (backup of the signs)
   corral.json            pens built by the rancher
   stats.json             accumulated statistics
+  almacen_inventario.json  contents of each warehouse chest
 ```
 
 Run a single bot without the panel: `node bots/miner.js` (same for the others).

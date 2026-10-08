@@ -28,6 +28,8 @@ const {
   depositNoMerge,
   returnHomeAndDeposit,
   runPendingCommand,
+  setIssue,
+  clearIssue,
   sleep,
   fmtPos,
 } = require('./common')
@@ -179,7 +181,7 @@ const fuelUnits = bot => bot.inventory.items().filter(i => isFuel(i.name)).reduc
 
 /** Trae del almacén combustible para fundir `items` objetos: carbón primero; si no llega, madera. */
 async function ensureFuel(bot, items) {
-  if (fuelUnits(bot) >= items) return
+  if (fuelUnits(bot) >= items) { clearIssue(bot, 'fuel'); return }
   await fetchFromWarehouse(bot, [
     { test: n => n === 'coal' || n === 'charcoal', max: Math.ceil((items - fuelUnits(bot)) / 8), cats: ['Minerales', 'Varios'] },
   ], 'Artesano')
@@ -188,7 +190,10 @@ async function ensureFuel(bot, items) {
       { test: n => /_log$|_planks$/.test(n), max: Math.ceil((items - fuelUnits(bot)) / 1.5), cats: ['Madera'] },
     ], 'Artesano')
   }
-  if (fuelUnits(bot) < items) console.warn(`${TAG} ⚠️ No queda combustible suficiente en el almacén (carbón o madera).`)
+  if (fuelUnits(bot) < items) {
+    setIssue(bot, 'fuel', 'err', 'Sin combustible en el almacén (carbón o madera): los hornos se paran')
+    console.warn(`${TAG} ⚠️ No queda combustible suficiente en el almacén (carbón o madera).`)
+  } else clearIssue(bot, 'fuel')
 }
 
 function findFurnaces(bot) {
@@ -318,11 +323,13 @@ async function fetchSmeltables(bot, idleFurnaces) {
   ], 'Artesano')
   const inputs = Object.entries(got).filter(([n]) => isInput(n)).reduce((a, [, n]) => a + n, 0)
   if (inputs === 0) {
+    setIssue(bot, 'idle', 'info', 'Nada que fundir ni cocinar en el almacén')
     console.log(`${TAG} 💤 No hay nada que fundir ni cocinar en el almacén.`)
     await teleportTo(bot, bot.home)
     return
   }
 
+  clearIssue(bot, 'idle')
   await ensureFuel(bot, countOf(bot, isInput))
   const summary = Object.entries(got).map(([n, c]) => `${n.replace(/_/g, ' ')} ×${c}`).join(' · ')
   console.log(`${TAG} 🏬 Traído del almacén para los hornos: ${summary}`)
@@ -371,19 +378,26 @@ async function checkAndCraft(bot) {
   }
 
   if (needs.length === 0) {
+    clearIssue(bot, 'tools')
     console.log(`${TAG} ✅ Todos los bots tienen herramientas de repuesto.`)
     await teleportTo(bot, bot.home)
     return
   }
   console.log(`${TAG} 🛠️ Hace falta: ${needs.map(n => `${LABELS[n.key] || n.key} (${n.family.replace('_', ' ')} ×${n.n})`).join(', ')}`)
 
+  const failed = []
   for (const need of needs) {
     for (let i = 0; i < need.n && !bot.stopped && !bot.pendingCommand; i++) {
       const tool = await craftTool(bot, need.family)
-      if (!tool) break
-      await deliverTool(bot, tool, need)
+      if (!tool || !await deliverTool(bot, tool, need)) {
+        failed.push(`${LABELS[need.key] || need.key} (${need.family.replace('_', ' ')})`)
+        break
+      }
     }
   }
+  // Si un bot se queda sin repuesto, que se vea en el panel (el motivo concreto está en el registro)
+  if (failed.length) setIssue(bot, 'tools', 'warn', `No pudo dar repuesto a: ${failed.join(', ')}`)
+  else if (!bot.stopped && !bot.pendingCommand) clearIssue(bot, 'tools')
 
   // Lo que sobre (materiales) a su cofre: el organizador lo devuelve al almacén
   await teleportTo(bot, bot.home)
@@ -443,9 +457,13 @@ async function craftTool(bot, family) {
   const table = await ensureTable(bot)
   if (!table) return null
   const before = countOf(bot, n => n === itemName)
+  const invText = () => bot.inventory.items().map(i => `${i.name}×${i.count}`).join(', ') || 'vacío'
+  const invBefore = invText()
   if (!await craft(bot, itemName, table)) return null
+  // El servidor puede tardar en confirmar el resultado
+  if (countOf(bot, n => n === itemName) <= before) await waitUntil(() => countOf(bot, n => n === itemName) > before, 2500)
   if (countOf(bot, n => n === itemName) <= before) {
-    console.warn(`${TAG} El crafteo de ${itemName.replace(/_/g, ' ')} no dio resultado (no apareció en el inventario).`)
+    console.warn(`${TAG} El crafteo de ${itemName.replace(/_/g, ' ')} no dio resultado (no apareció en el inventario). Antes: ${invBefore} · después: ${invText()}`)
     return null
   }
   console.log(`${TAG} 🔨 Fabricado: ${itemName.replace(/_/g, ' ')}.`)

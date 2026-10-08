@@ -58,7 +58,12 @@ ViaVersion/ViaBackwards (los bots hablan el protocolo 1.21.4).
 ## 🖥️ Panel de control
 
 `abrir_panel.bat` (o `npm start`) ejecuta los 7 bots en **un solo proceso** (`panel.js`, menos RAM) y abre
-la interfaz en `http://127.0.0.1:3000`, accesible solo desde el propio PC.
+la interfaz en `http://127.0.0.1:3000`.
+
+- **Desde otro equipo de tu red:** pon en `config.js` → `panel.host: '0.0.0.0'` y añade su IP a
+  `panel.allowedIps`; luego abre `http://<IP de este PC>:3000`. El panel **no tiene contraseña**: cualquier
+  IP que no esté en la lista recibe "Acceso denegado". En Windows hay que permitir el puerto 3000 en el
+  firewall para esa IP. Con `panel.host: '127.0.0.1'` solo se puede abrir desde el propio PC.
 
 - Si el panel ya está corriendo, el `.bat` solo vuelve a abrir la ventana.
 - **Cerrar la ventana NO detiene los bots.** Siguen en un proceso minimizado.
@@ -71,7 +76,7 @@ la interfaz en `http://127.0.0.1:3000`, accesible solo desde el propio PC.
 - **Inventario completo:** las fichas con 🔒 son la **reserva** que se queda a propósito al guardar
   (herramienta, comida, semillas…). `cobblestone ×39 (🔒32)` significa que se queda 32 y guardará 7.
 - `📦 N por guardar · último guardado hace X`.
-- Aviso **📦 Cofres de casa llenos** cuando no le cabe nada más.
+- **Alertas** (ver abajo); el borde de la tarjeta se pone amarillo o rojo si tiene alguna.
 
 ### Botones de cada bot
 | Botón | Qué hace |
@@ -84,6 +89,31 @@ la interfaz en `http://127.0.0.1:3000`, accesible solo desde el propio PC.
 | 🗂️ Organizar ahora | Solo en el Organizador: hace una ronda de recogida y ordenación |
 
 El **registro** de abajo se filtra por bot con las pestañas.
+
+### 🚨 Alertas
+El panel vigila cada bot y avisa en su tarjeta (y en la cabecera: `⚠️ N alertas`; al pulsarlo te lleva al bot):
+
+| Alerta | Cuándo |
+|---|---|
+| 🚨 Sin conexión | Lleva más de 2 min sin conectar estando encendido |
+| ⚠️ Produce poco | 0 árboles / minerales en 20 min, 0 capturas en 10, 0 cosechas en 30, 0 fundidos en 45, ninguna ronda del Organizador en el doble de su intervalo |
+| ⚠️ Atascos | 3 o más en 30 min |
+| ⚠️ Ha muerto | En los últimos 15 min |
+| ⚠️ Cofres de casa llenos | No le cabe nada más en casa |
+| Avisos del bot | Sin pico / hacha / caña, sin combustible para los hornos, no pudo dar una herramienta de repuesto, almacén sin sitio para una categoría… |
+
+Se quitan solas cuando se resuelven. Cada alerta que aparece o se resuelve queda también en el registro del bot.
+
+### 📦 Pestaña Almacén
+Lo que hay en el almacén del Organizador (o abre `http://127.0.0.1:3000/#almacen`):
+- **Buscador** (también en español: "diamante", "hierro", "madera"…) y filtro por categoría.
+- Se actualiza cada vez que un bot abre un cofre del almacén, y con una **revisión completa** cada 2 h
+  o al pulsar **🔄 Revisar almacén** (útil si sacas o metes cosas a mano).
+- **Pedir:** eliges cantidad y jugador, y el **Organizador** lo saca del almacén, se teletransporta a tu lado
+  y te lo suelta. Tienes que estar conectado al servidor. Si está en mitad de una ronda, la interrumpe y la
+  retoma después.
+
+Se guarda en `data/almacen_inventario.json`.
 
 ### 📊 Pestaña Estadísticas
 Arriba del panel cambias entre **🤖 Bots** y **📊 Estadísticas** (o abre `http://127.0.0.1:3000/#stats`).
@@ -261,9 +291,11 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
 abrir_panel.bat        Abre el panel en Windows (recomendado)
 panel.js               Gestor de los 7 bots + servidor del panel (127.0.0.1:3000)
 panel/index.html       Interfaz del panel
+panel/alerts.js        Alertas de los bots
 config.js              Toda la configuración
 bots/common.js         Lógica compartida: casa, viajes, cofres, rescate, órdenes del panel, /give, /tp
 bots/stats.js          Contadores de estadísticas
+bots/inventory.js      Inventario del almacén (lo que hay en cada cofre)
 bots/woodcutter.js     Leñador
 bots/miner.js          Minero
 bots/farmer.js         Granjero
@@ -271,12 +303,13 @@ bots/fisher.js         Pescador
 bots/organizer.js      Organizador
 bots/rancher.js        Ganadero
 bots/artisan.js        Artesano (hornos + herramientas)
-bots/warehouse.js      Acceso al almacén (lo usa el Artesano)
+bots/warehouse.js      Acceso al almacén (lo usan el Artesano y los pedidos)
 data/                  Datos de tu mundo (se crea solo, no se sube a git):
   home_<bot>.json        casa de cada bot
   almacen.json           categoría de cada cofre del organizador (respaldo de los carteles)
   corral.json            corrales construidos por el ganadero
   stats.json             estadísticas acumuladas
+  almacen_inventario.json  contenido de cada cofre del almacén
 ```
 
 Ejecutar un bot suelto (sin panel): `node bots/miner.js` (igual con los demás).

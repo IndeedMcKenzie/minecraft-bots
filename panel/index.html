@@ -123,6 +123,24 @@
     transition: border-color .2s;
   }
   .card.problem { border-color: color-mix(in srgb, var(--err) 60%, var(--border)); }
+  .card.caution { border-color: color-mix(in srgb, var(--warn) 60%, var(--border)); }
+
+  .alerts { display: flex; flex-direction: column; gap: 4px; }
+  .alert {
+    display: flex;
+    gap: 6px;
+    font-size: 12px;
+    border-radius: 7px;
+    padding: 5px 9px;
+    overflow-wrap: anywhere;
+  }
+  .alert.err { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); font-weight: 600; }
+  .alert.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); font-weight: 600; }
+  .alert.info { color: var(--muted); background: var(--surface-2); }
+  .alert .since { font-weight: 400; opacity: .8; white-space: nowrap; margin-left: auto; }
+  .alert-summary { font-size: 12.5px; padding: 4px 10px; }
+  .alert-summary.err { color: var(--err); border-color: var(--err); font-weight: 600; }
+  .alert-summary.warn { color: var(--warn); border-color: var(--warn); font-weight: 600; }
   .card-head { display: flex; align-items: center; gap: 10px; }
   .card-head .emoji { font-size: 22px; }
   .card-head .name { font-weight: 600; font-size: 15px; }
@@ -141,14 +159,6 @@
   }
   .activity .ago { color: var(--muted); font-size: 11px; margin-left: 4px; }
   .issue { color: var(--err); font-size: 12px; overflow-wrap: anywhere; }
-  .warn-full {
-    color: var(--warn);
-    font-size: 12px;
-    font-weight: 600;
-    background: color-mix(in srgb, var(--warn) 12%, transparent);
-    border-radius: 7px;
-    padding: 5px 9px;
-  }
 
   .bar-row { display: grid; grid-template-columns: 18px 1fr 42px; align-items: center; gap: 8px; font-size: 12px; }
   .bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
@@ -305,6 +315,39 @@
   .hbar .fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; }
   .hbar .val { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 3ch; text-align: right; }
 
+  /* ── Almacén ── */
+  .wh-view { overflow: auto; }
+  .wh-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .wh-head input[type=search], .wh-head select, .qty {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 10px;
+  }
+  .wh-head input[type=search] { flex: 1; min-width: 180px; max-width: 340px; }
+  .wh-status { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); }
+  .wh-status.busy { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; }
+  .wh-status.warn { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); font-weight: 600; }
+  .cat-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .wh-table td.item { font-weight: 600; }
+  .wh-table td .stacks { color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .wh-table td.order { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+  .qty { width: 78px; padding: 4px 8px; text-align: right; }
+
+  /* ── Mapa (BlueMap) ── */
+  .map-view { padding-bottom: 16px; }
+  .map-frame {
+    flex: 1;
+    width: 100%;
+    min-height: 420px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
   @media (max-width: 600px) {
     header, main { padding-left: 16px; padding-right: 16px; }
   }
@@ -315,9 +358,12 @@
     <h1>🤖 Bots Minecraft</h1>
     <div class="server"><span class="dot" id="server-dot"></span><span id="server-text">Comprobando servidor…</span></div>
     <span class="meta" id="meta"></span>
+    <button class="alert-summary" id="alert-summary" title="Ir al primer bot con alertas">✅ Sin alertas</button>
     <nav class="views" aria-label="Vistas">
       <button class="view-tab active" data-view="bots">🤖 Bots</button>
+      <button class="view-tab" data-view="warehouse">📦 Almacén</button>
       <button class="view-tab" data-view="stats">📊 Estadísticas</button>
+      <button class="view-tab" data-view="map" hidden>🗺️ Mapa</button>
     </nav>
     <div class="spacer"></div>
     <div class="actions">
@@ -352,6 +398,24 @@
       <div class="panel-card"><div class="card-title">⛏️ Minerales por tipo</div><div class="hbars" id="bd-minerales"></div></div>
       <div class="panel-card"><div class="card-title">🎣 Pesca</div><div class="hbars" id="bd-pesca"></div></div>
       <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>    </section>
+  </main>
+
+  <main id="view-warehouse" class="wh-view" hidden>
+    <div class="wh-head">
+      <input type="search" id="wh-search" placeholder="Buscar objeto… (p. ej. diamante, iron, log)" aria-label="Buscar objeto">
+      <label class="meta">Entregar a <select id="wh-player"></select></label>
+      <button id="wh-scan" title="El Organizador abre todos los cofres del almacén y apunta lo que hay">🔄 Revisar almacén</button>
+      <span class="meta" id="wh-meta"></span>
+    </div>
+    <div class="wh-status" id="wh-status"></div>
+    <div class="cat-chips" id="wh-cats"></div>
+    <section class="panel-card">
+      <div class="table-wrap"><table class="stats-table wh-table" id="wh-table"></table></div>
+    </section>
+  </main>
+
+  <main id="view-map" class="map-view" hidden>
+    <iframe class="map-frame" id="map-frame" title="Mapa del mundo (BlueMap)"></iframe>
   </main>
 
   <main id="view-bots">
@@ -389,6 +453,8 @@ const STATUS = {
 let logs = []
 let filter = 'all'
 let lastState = null
+let mapUrl = null
+let mapFocus = null // posición a centrar al abrir el mapa
 const cardEls = {}
 
 // ── Utilidades ──────────────────────────────────────────────
@@ -440,7 +506,7 @@ function createCard(b) {
     </div>
     <div class="activity"><span class="act-text"></span><span class="ago"></span></div>
     <div class="issue" hidden></div>
-    <div class="warn-full" hidden>📦 Cofres de casa llenos (máximo alcanzado o sin sitio para otro): vacía alguno o pon más</div>
+    <div class="alerts"></div>
     <div class="bar-row" title="Vida"><span>❤️</span><div class="bar health"><span></span></div><span class="num hp"></span></div>
     <div class="bar-row" title="Hambre"><span>🍗</span><div class="bar food"><span></span></div><span class="num fd"></span></div>
     <div class="facts">
@@ -458,6 +524,7 @@ function createCard(b) {
       <button data-act="gohome" title="Dejar lo que está haciendo, volver a casa, guardar todo y seguir trabajando desde allí">🏡 Volver a casa</button>
       <button data-act="give">🎁 Dar herramienta</button>
       <button data-act="escape" title="Si está atascado: sube a la superficie y vuelve a casa; si no puede (o lo pulsas otra vez en menos de 10 min), /tp a casa">🆘 Rescatar</button>
+      <button class="map-btn" title="Abrir el mapa de BlueMap centrado en este bot" hidden>🗺️ Ver en el mapa</button>
       <button data-act="organize" class="primary" title="Recoger de las casas de los demás bots y ordenar en el almacén ahora" hidden>🗂️ Organizar ahora</button>
     </div>`
   $('.emoji', el).textContent = b.emoji
@@ -471,6 +538,7 @@ function createCard(b) {
   })
   $('[data-act="give"]', el).title = b.gifts ? `Dar con /give: ${b.gifts} (el bot debe ser OP)` : 'Sin objetos configurados en config.js'
   $('[data-act="organize"]', el).hidden = b.key !== 'organizer'
+  $('.map-btn', el).addEventListener('click', () => { if (el._pos) openMap(el._pos) })
   return el
 }
 
@@ -489,8 +557,11 @@ function updateCard(el, b) {
   const issueEl = $('.issue', el)
   issueEl.hidden = !showIssue
   issueEl.textContent = showIssue ? b.issue : ''
-  el.classList.toggle('problem', !!showIssue)
-  $('.warn-full', el).hidden = !b.homeFull
+  renderAlerts($('.alerts', el), b.alerts || [])
+  const worst = (b.alerts || []).find(a => a.level !== 'info')
+  // Siempre un booleano: con undefined, toggle() alterna la clase en cada redibujado (el borde parpadearía)
+  el.classList.toggle('problem', !!showIssue || (!!worst && worst.level === 'err'))
+  el.classList.toggle('caution', !!worst && worst.level === 'warn')
 
   $('.bar.health > span', el).style.width = online ? `${(b.health / 20) * 100}%` : '0'
   $('.bar.food > span', el).style.width = online ? `${(b.food / 20) * 100}%` : '0'
@@ -531,7 +602,26 @@ function updateCard(el, b) {
   const organize = $('[data-act="organize"]', el)
   organize.disabled = !online || !b.home || b.organizing
   organize.textContent = b.organizing ? '🗂️ Organizando…' : '🗂️ Organizar ahora'
+  el._pos = b.pos
+  const mapBtn = $('.map-btn', el)
+  mapBtn.hidden = !mapUrl
+  mapBtn.disabled = !online || !b.pos
   $('[data-act="give"]', el).disabled = !online || !b.gifts || $('[data-act="give"]', el).classList.contains('busy')
+}
+
+const ALERT_ICON = { err: '🚨', warn: '⚠️', info: '💤' }
+function renderAlerts(container, alerts) {
+  container.replaceChildren(...alerts.map(a => {
+    const row = document.createElement('div')
+    row.className = 'alert ' + a.level
+    const text = document.createElement('span')
+    text.textContent = `${ALERT_ICON[a.level] || ''} ${a.text}`
+    const since = document.createElement('span')
+    since.className = 'since'
+    since.textContent = ago(a.since)
+    row.append(text, since)
+    return row
+  }))
 }
 
 // Fichas de inventario: las de reserva (lo que se queda a propósito) van atenuadas con 🔒
@@ -551,6 +641,12 @@ function renderItems(container, items) {
 
 function renderState(state) {
   lastState = state
+  // Desde otro equipo, "127.0.0.1" sería ese equipo: usar la misma dirección con la que se abrió el panel
+  const map = state.map && state.map.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/, `//${location.hostname}`)
+  if (map !== mapUrl) {
+    mapUrl = map
+    $('[data-view="map"]').hidden = !mapUrl
+  }
   const cards = $('#cards')
   for (const b of state.bots) {
     if (!cardEls[b.key]) {
@@ -559,6 +655,13 @@ function renderState(state) {
     }
     updateCard(cardEls[b.key], b)
   }
+
+  // Resumen de alertas (las 'info' no cuentan)
+  const all = state.bots.flatMap(b => (b.alerts || []).filter(a => a.level !== 'info'))
+  const sum = $('#alert-summary')
+  const errs = all.filter(a => a.level === 'err').length
+  sum.className = 'alert-summary' + (errs ? ' err' : all.length ? ' warn' : '')
+  sum.textContent = all.length === 0 ? '✅ Sin alertas' : `${errs ? '🚨' : '⚠️'} ${all.length} ${all.length === 1 ? 'alerta' : 'alertas'}`
 
   const s = state.server
   $('#server-dot').className = 'dot ' + (s.online === null ? 'warn' : s.online ? 'ok' : 'err')
@@ -622,6 +725,12 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
 })
 
 // ── Botones generales ───────────────────────────────────────
+$('#alert-summary').addEventListener('click', () => {
+  if (currentView !== 'bots') $('[data-view="bots"]').click()
+  const card = document.querySelector('.card.problem, .card.caution')
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+})
+
 document.querySelectorAll('[data-all]').forEach(btn => {
   btn.addEventListener('click', () => post(`/api/all/${btn.dataset.all}`))
 })
@@ -665,10 +774,24 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === btn))
     $('#view-bots').hidden = currentView !== 'bots'
     $('#view-stats').hidden = currentView !== 'stats'
+    $('#view-warehouse').hidden = currentView !== 'warehouse'
+    $('#view-map').hidden = currentView !== 'map'
+    // El mapa 3D solo se carga mientras se ve (usa la gráfica del navegador)
+    const frame = $('#map-frame')
+    if (currentView === 'map' && mapUrl) {
+      const hash = mapFocus ? `#world:${mapFocus.x}:${mapFocus.y}:${mapFocus.z}:80:0:0.8:0:0:perspective` : ''
+      mapFocus = null
+      frame.src = mapUrl + '/' + hash
+    } else if (frame.getAttribute('src') && frame.getAttribute('src') !== 'about:blank') {
+      frame.src = 'about:blank'
+    }
     clearInterval(statsTimer)
     if (currentView === 'stats') {
       loadStats()
       statsTimer = setInterval(loadStats, 10000) // solo se consulta mientras la vista está abierta
+    } else if (currentView === 'warehouse') {
+      loadWarehouse()
+      statsTimer = setInterval(loadWarehouse, 4000)
     }
   })
 })
@@ -683,6 +806,8 @@ document.querySelectorAll('[data-period]').forEach(btn => {
 
 // Abrir directamente en estadísticas con http://127.0.0.1:3000/#stats
 if (location.hash === '#stats') setTimeout(() => $('[data-view="stats"]').click(), 0)
+if (location.hash === '#mapa') setTimeout(() => $('[data-view="map"]').click(), 300)
+if (location.hash === '#almacen') setTimeout(() => $('[data-view="warehouse"]').click(), 0)
 
 async function loadStats() {
   try {
@@ -877,6 +1002,189 @@ function renderHourly(hourly, bots, now) {
     })
   })
 }
+
+function openMap(pos) {
+  mapFocus = pos
+  $('[data-view="map"]').click()
+}
+
+// ── Almacén: inventario y pedidos ───────────────────────────
+let whData = null
+let whCat = 'all'
+const orderQty = {}
+// Para buscar en español
+const ES_ALIASES = {
+  diamante: 'diamond', esmeralda: 'emerald', hierro: 'iron', oro: 'gold', cobre: 'copper', carbon: 'coal',
+  lapislazuli: 'lapis', madera: 'log', tronco: 'log', tabla: 'planks', palo: 'stick', piedra: 'stone',
+  roca: 'cobble', trigo: 'wheat', semilla: 'seeds', zanahoria: 'carrot', patata: 'potato', papa: 'potato',
+  remolacha: 'beetroot', calabaza: 'pumpkin', sandia: 'melon', pescado: 'cod', bacalao: 'cod', salmon: 'salmon',
+  carne: 'beef', cerdo: 'porkchop', pollo: 'chicken', cordero: 'mutton', conejo: 'rabbit', cocinado: 'cooked',
+  lingote: 'ingot', cuero: 'leather', hueso: 'bone', cuerda: 'string', huevo: 'egg', pluma: 'feather',
+  manzana: 'apple', pan: 'bread', arena: 'sand', grava: 'gravel', tierra: 'dirt', brote: 'sapling',
+}
+const plain = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+
+async function loadWarehouse() {
+  try {
+    const res = await fetch('/api/warehouse', { cache: 'no-store' })
+    whData = await res.json()
+    renderWarehouse()
+  } catch {}
+}
+
+function itemMatches(item, query) {
+  if (!query) return true
+  const name = item.name.replace(/_/g, ' ')
+  const label = plain(itemLabel(item.name))
+  return query.split(/\s+/).every(w => name.includes(w) || label.includes(w) || (ES_ALIASES[w] && name.includes(ES_ALIASES[w])))
+}
+
+function renderWarehouse() {
+  const d = whData
+  if (!d) return
+  const org = d.organizer
+  const total = d.items.reduce((a, i) => a + i.count, 0)
+  $('#wh-meta').textContent = d.chests
+    ? `${fmtNum(d.items.length)} tipos · ${fmtNum(total)} objetos en ${d.chests} cofres · revisión completa ${d.lastScan ? ago(d.lastScan) : 'pendiente'}`
+    : ''
+
+  // Jugadores (se conserva la elección)
+  const sel = $('#wh-player')
+  const chosen = sel.value
+  const players = d.players
+  if (sel.dataset.list !== players.join(',')) {
+    sel.replaceChildren(...(players.length ? players : ['(nadie conectado)']).map(p => {
+      const o = document.createElement('option')
+      o.value = players.length ? p : ''
+      o.textContent = p
+      return o
+    }))
+    sel.dataset.list = players.join(',')
+    if (players.includes(chosen)) sel.value = chosen
+  }
+
+  // Estado del Organizador
+  const st = $('#wh-status')
+  let text = 'Elige la cantidad y pulsa Pedir: el Organizador lo saca del almacén y te lo lleva con /tp.'
+  let cls = ''
+  if (!org.online) { text = '⚠️ El Organizador no está conectado: no se pueden hacer pedidos.'; cls = 'warn' }
+  else if (!org.hasHome) { text = '⚠️ El Organizador no tiene almacén todavía.'; cls = 'warn' }
+  else if (org.request) {
+    const r = org.request
+    text = `${r.started ? '🚚 Llevando' : '⏳ En cola:'} ${fmtNum(r.count)} × ${itemLabel(r.item)} para ${r.player}…`
+    cls = 'busy'
+  } else if (org.scanning) { text = '📋 Revisando todos los cofres del almacén…'; cls = 'busy' }
+  else if (!players.length) { text = '⚠️ No hay ningún jugador conectado: entra al servidor para recibir pedidos.'; cls = 'warn' }
+  else if (!d.chests) { text = 'Aún no hay inventario: pulsa "Revisar almacén" para que el Organizador lo cuente.' }
+  else if (org.organizing) text = '🗂️ El Organizador está haciendo su ronda; un pedido la interrumpe y la retoma después.'
+  st.textContent = text
+  st.className = 'wh-status ' + cls
+  const canOrder = org.online && org.hasHome && !org.request && players.length > 0
+  $('#wh-scan').disabled = !org.online || !org.hasHome || org.scanning || !!org.request
+
+  // Categorías
+  const cats = [...new Set(d.items.flatMap(i => i.cats))].sort()
+  const chips = $('#wh-cats')
+  if (chips.dataset.list !== cats.join(',')) {
+    chips.replaceChildren(...['all', ...cats].map(c => {
+      const b = document.createElement('button')
+      b.className = 'tab' + (c === whCat ? ' active' : '')
+      b.dataset.cat = c
+      b.textContent = c === 'all' ? 'Todas' : c
+      b.addEventListener('click', () => {
+        whCat = c
+        chips.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.cat === c))
+        renderWarehouseTable(canOrder, true)
+      })
+      return b
+    }))
+    chips.dataset.list = cats.join(',')
+  }
+  renderWarehouseTable(canOrder)
+}
+
+function renderWarehouseTable(canOrder, force = false) {
+  const table = $('#wh-table')
+  // No redibujar mientras se escribe una cantidad (se perdería lo escrito)
+  if (!force && table.contains(document.activeElement)) {
+    table.querySelectorAll('.order button').forEach(b => { b.disabled = !canOrder })
+    return
+  }
+  const query = plain($('#wh-search').value)
+  const items = whData.items.filter(i => (whCat === 'all' || i.cats.includes(whCat)) && itemMatches(i, query))
+  table.replaceChildren()
+  const head = table.createTHead().insertRow()
+  for (const h of ['Objeto', 'Categoría', 'Cantidad', 'Pedir']) {
+    const th = document.createElement('th')
+    th.textContent = h
+    head.appendChild(th)
+  }
+  const body = table.createTBody()
+  if (items.length === 0) {
+    const cell = body.insertRow().insertCell()
+    cell.colSpan = 4
+    cell.className = 'chart-empty'
+    cell.textContent = whData.items.length ? 'Nada coincide con la búsqueda' : 'Sin datos todavía'
+    return
+  }
+  for (const item of items.slice(0, 300)) {
+    const row = body.insertRow()
+    const name = row.insertCell()
+    name.className = 'item'
+    name.textContent = itemLabel(item.name)
+    name.title = item.name
+    row.insertCell().textContent = item.cats.join(', ') || '—'
+    const qtyCell = row.insertCell()
+    qtyCell.textContent = fmtNum(item.count)
+    if (item.count >= 128) {
+      const st = document.createElement('span')
+      st.className = 'stacks'
+      st.textContent = `(${Math.floor(item.count / 64)} pilas)`
+      qtyCell.appendChild(st)
+    }
+    const order = row.insertCell()
+    order.className = 'order'
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.className = 'qty'
+    input.min = 1
+    input.max = Math.min(item.count, 27 * 64)
+    input.value = orderQty[item.name] || Math.min(item.count, 64)
+    input.setAttribute('aria-label', `Cantidad de ${itemLabel(item.name)}`)
+    input.addEventListener('input', () => { orderQty[item.name] = input.value })
+    const btn = document.createElement('button')
+    btn.textContent = 'Pedir'
+    btn.disabled = !canOrder
+    btn.addEventListener('click', async () => {
+      const count = Math.floor(Number(input.value))
+      if (!(count >= 1)) return toast('Pon una cantidad válida', true)
+      btn.classList.add('busy')
+      try {
+        await postJson('/api/warehouse/request', { item: item.name, count, player: $('#wh-player').value })
+        await loadWarehouse()
+      } finally { btn.classList.remove('busy') }
+    })
+    order.append(input, btn)
+  }
+}
+
+async function postJson(url, body) {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'X-Panel': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data.ok === false) toast(data.error || `Error ${res.status}`, true)
+    else if (data.message) toast(data.message)
+    return data
+  } catch {
+    toast('No se pudo contactar con el panel', true)
+  }
+}
+
+$('#wh-search').addEventListener('input', () => { if (whData) renderWarehouseTable(whData.organizer.online && whData.organizer.hasHome && !whData.organizer.request && whData.players.length > 0, true) })
+$('#wh-scan').addEventListener('click', async () => {
+  await post('/api/warehouse/scan')
+  loadWarehouse()
+})
 
 // ── Conexión en vivo ────────────────────────────────────────
 let shutDown = false

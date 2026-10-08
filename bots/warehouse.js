@@ -10,6 +10,7 @@ const Vec3 = require('vec3')
 const { goals: { GoalNear } } = require('mineflayer-pathfinder')
 const cfg = require('../config')
 const { safeGoto, inReach, teleportTo, sleep } = require('./common')
+const inventory = require('./inventory')
 
 const DATA = path.join(__dirname, '..', 'data')
 const orgCfg = cfg.organizer || {}
@@ -29,6 +30,11 @@ function warehouseHome() {
   } catch {
     return null
   }
+}
+
+/** Nombre de categoría para mostrar (el de config.js) a partir del texto normalizado del cartel. */
+function displayCat(key) {
+  return Object.keys(orgCfg.categories || {}).find(name => normalize(name) === key) || key
 }
 
 function loadAssignments() {
@@ -116,7 +122,7 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
   const cats = new Set(wants.flatMap(w => (w.cats || []).map(normalize)))
   const chests = [...categoryChests(bot, home).entries()]
     .filter(([k]) => cats.size === 0 || cats.has(k))
-    .flatMap(([, list]) => list)
+    .flatMap(([k, list]) => list.map(chest => Object.assign(chest, { catKey: k })))
     .sort((a, b) => a.position.distanceTo(bot.entity.position) - b.position.distanceTo(bot.entity.position))
 
   const before = countByName(bot)
@@ -135,6 +141,7 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
           await sleep(120)
         } catch {}
       }
+      inventory.recordChest(chest, displayCat(chest.catKey), container.containerItems())
       try { container.close() } catch {}
       await sleep(300)
     } catch {}
@@ -147,4 +154,4 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
   return got
 }
 
-module.exports = { warehouseHome, categoryChests, isWarehouseChest, signLabel, fetchFromWarehouse, normalize }
+module.exports = { warehouseHome, categoryChests, isWarehouseChest, signLabel, fetchFromWarehouse, normalize, displayCat }

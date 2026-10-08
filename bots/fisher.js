@@ -17,6 +17,8 @@ const {
   equipBestTool,
   returnHomeAndDeposit,
   runPendingCommand,
+  setIssue,
+  clearIssue,
   isInventoryFull,
   withdrawToolsFromChest,
   markBad,
@@ -75,6 +77,7 @@ async function workLoop(bot) {
       }
 
       if (!bot.inventory.items().some(i => i.name === ROD)) {
+        setIssue(bot, 'tool', 'err', 'Sin caña: no puede pescar hasta que haya una en su cofre')
         if (Date.now() - lastNoRodMsg > 60000) {
           console.log(bot.home
             ? `[Pescador] ⚠️ Sin caña de pescar. Deja una en el cofre de casa ${fmtPos(bot.home)} (3 palos + 2 cuerdas).`
@@ -84,6 +87,8 @@ async function workLoop(bot) {
         await sleep(15000)
         continue
       }
+
+      clearIssue(bot, 'tool')
 
       // ── 3. Buscar sitio de pesca (se recalcula si cambia la casa) ─
       const homeKey = bot.home ? bot.home.toString() : 'none'
