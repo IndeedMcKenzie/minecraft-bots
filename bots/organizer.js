@@ -26,6 +26,8 @@ const {
   activeBots,
   depositNoMerge,
   setIssue,
+  idleSleep,
+  openWithTimeout,
   clearIssue,
   sleep,
   fmtPos,
@@ -115,7 +117,7 @@ async function workLoop(bot) {
         // Con el plugin BotHelper el panel ya sabe el contenido real: no hace falta revisar cofre por cofre
         if (!bot.pendingCommand && !inventory.isLive() && (!last || Date.now() - last > SCAN_EVERY_MS)) await scanInventory(bot)
       }
-      await sleep(2000)
+      await idleSleep(bot, 2000)
     } catch (err) {
       console.warn(`[Organizador] ⚠️ ${err.message}`)
       await sleep(5000)
@@ -392,15 +394,12 @@ async function waitOwnerIdle(src) {
 }
 
 function chestIds(bot) {
-  const mcData = require('minecraft-data')(bot.version)
+  const mcData = bot.registry
   return ['chest', 'trapped_chest', 'barrel'].map(n => mcData.blocksByName[n]?.id).filter(Boolean)
 }
 
 async function openContainer(bot, block) {
-  return Promise.race([
-    bot.openContainer(block),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al abrir cofre')), 4000)),
-  ])
+  return openWithTimeout(bot, block)
 }
 
 async function approach(bot, block) {
@@ -614,6 +613,7 @@ function warehouseRadius(bot) {
 }
 
 function scanWarehouse(bot) {
+  const t0 = Date.now()
   const assigned = loadAssignments()
   const positions = bot.findBlocks({ matching: chestIds(bot), point: bot.home, maxDistance: warehouseRadius(bot), count: 5000 })
   const byCategory = new Map()
@@ -627,6 +627,8 @@ function scanWarehouse(bot) {
     if (!byCategory.has(key)) byCategory.set(key, [])
     byCategory.get(key).push(chest)
   }
+  const ms = Date.now() - t0
+  if (ms > 300) console.warn(`[Organizador] ⏱️ Buscar los cofres del almacén tardó ${ms} ms (radio ${warehouseRadius(bot)}, ${positions.length} cofres)`)
   return { byCategory, total: positions.length }
 }
 

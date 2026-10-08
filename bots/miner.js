@@ -53,6 +53,9 @@ const ORE_PRIORITY = [
   'redstone_ore',          'deepslate_redstone_ore',
 ]
 
+// Por debajo de esta altura la roca madre está mezclada con la pizarra (capas -64 a -60)
+const MIN_ORE_Y = -58
+
 const JUNK_NAMES = [
   'cobblestone', 'cobbled_deepslate', 'dirt', 'gravel',
   'sand', 'andesite', 'granite', 'diorite', 'tuff',
@@ -88,7 +91,7 @@ async function workLoop(bot) {
       // ── 0. Órdenes del panel (p. ej. volver a casa) ──────────
       if (await runPendingCommand(bot)) continue
 
-      const mcData = require('minecraft-data')(bot.version)
+      const mcData = bot.registry
 
       // ── 1. Sin pico: ir a casa a buscar uno en los cofres ─────
       await withdrawToolsFromChest(bot, PICKAXES, { travel: true })
@@ -177,7 +180,8 @@ function findBestOre(bot, mcData, pickType) {
     matching: [...priority.keys()],
     maxDistance: cfg.search.mineRadius,
     count: 64,
-    useExtraInfo: (b) => !isBad(bot, b.position) && !inStuckZone(bot, b.position) && !!b.canHarvest(pickType),
+    // Nunca en las últimas capas: la roca madre aparece mezclada y el minero puede quedar encerrado sin salida
+    useExtraInfo: (b) => b.position.y >= MIN_ORE_Y && !isBad(bot, b.position) && !inStuckZone(bot, b.position) && !!b.canHarvest(pickType),
   })
   if (positions.length === 0) return null
 

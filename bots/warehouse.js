@@ -9,7 +9,7 @@ const path = require('path')
 const Vec3 = require('vec3')
 const { goals: { GoalNear } } = require('mineflayer-pathfinder')
 const cfg = require('../config')
-const { safeGoto, inReach, teleportTo, sleep } = require('./common')
+const { safeGoto, inReach, teleportTo, sleep, openWithTimeout } = require('./common')
 const inventory = require('./inventory')
 
 const DATA = path.join(__dirname, '..', 'data')
@@ -76,6 +76,7 @@ function isWarehouseChest(bot, pos) {
 
 /** Cofres del almacén agrupados por categoría (normalizada). Requiere estar cerca del almacén. */
 function categoryChests(bot, home) {
+  const t0 = Date.now()
   const assigned = loadAssignments()
   const byCategory = new Map()
   const positions = bot.findBlocks({ matching: chestIds(bot), point: home, maxDistance: warehouseRadius(home), count: 5000 })
@@ -87,14 +88,13 @@ function categoryChests(bot, home) {
     if (!byCategory.has(key)) byCategory.set(key, [])
     byCategory.get(key).push(chest)
   }
+  const ms = Date.now() - t0
+  if (ms > 300) console.warn(`[${bot.label}] ⏱️ Buscar los cofres del almacén tardó ${ms} ms (radio ${warehouseRadius(home)}, ${positions.length} cofres)`)
   return byCategory
 }
 
 async function openContainer(bot, block) {
-  return Promise.race([
-    bot.openContainer(block),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al abrir cofre')), 4000)),
-  ])
+  return openWithTimeout(bot, block)
 }
 
 async function approach(bot, block) {

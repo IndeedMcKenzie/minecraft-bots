@@ -207,12 +207,25 @@ function botState(def) {
 }
 
 const startedAt = Date.now()
+
+// Retraso del bucle del panel (lo que tardan en atenderse los timers): con los 6 bots en este proceso,
+// un retraso alto significa que ningún bot puede reaccionar ni enviar nada mientras dura
+const { monitorEventLoopDelay } = require('perf_hooks')
+const loopDelay = monitorEventLoopDelay({ resolution: 20 })
+loopDelay.enable()
+let loopStats = null
+setInterval(() => {
+  const ms = n => Math.round(n / 1e6)
+  loopStats = { p50: ms(loopDelay.percentile(50)), p95: ms(loopDelay.percentile(95)), p99: ms(loopDelay.percentile(99)), max: ms(loopDelay.max), at: Date.now() }
+  loopDelay.reset()
+}, 60000).unref()
 function getState() {
   return {
     server: { host: cfg.server.host, port: cfg.server.port, online: serverOnline, plugin: serverlink.serverInfo() },
     serverAlerts: serverAlerts(),
     startedAt,
     memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    loopDelay: loopStats, // retraso del panel en el último minuto (ms)
     map: (cfg.panel && cfg.panel.bluemapUrl) || null,
     bots: BOT_DEFS.map(botState),
   }
@@ -483,6 +496,13 @@ server.listen(PORT, HOST, () => {
   checkServer()
   setInterval(checkServer, SERVER_CHECK_MS)
   serverlink.start()
+  // Medidor de bloqueos: los 6 bots comparten este proceso; si se queda congelado, ninguno envía nada
+  let lastBeat = Date.now()
+  setInterval(() => {
+    const lag = Date.now() - lastBeat - 250
+    if (lag > 1000) console.warn(`[Panel] ⏱️ El panel estuvo bloqueado ${(lag / 1000).toFixed(1)} s (los bots no pudieron enviar nada en ese tiempo)`)
+    lastBeat = Date.now()
+  }, 250)
   setInterval(() => broadcast('state', getState()), STATE_INTERVAL_MS)
   setInterval(evaluateAlerts, 10000)
   // Tiempo conectado de cada bot (para las estadísticas)

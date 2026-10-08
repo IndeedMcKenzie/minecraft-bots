@@ -63,7 +63,7 @@ async function workLoop(bot) {
       // ── 0. Órdenes del panel (p. ej. volver a casa) ──────────
       if (await runPendingCommand(bot)) continue
 
-      const mcData = require('minecraft-data')(bot.version)
+      const mcData = bot.registry
 
       // ── 1. Caña: sacarla del cofre de casa si no tiene ───────
       await withdrawToolsFromChest(bot, [ROD], { travel: true })
@@ -154,6 +154,9 @@ async function workLoop(bot) {
 async function fishOnce(bot) {
   let timer
   bot.fishing = true // permite que una orden del panel recoja el anzuelo
+  // Mientras espera la picada está quieto: física en pausa (ver idleSleep en common.js)
+  const pausePhysics = cfg.performance && cfg.performance.pauseIdlePhysics && bot.entity.onGround
+  if (pausePhysics) bot.physicsEnabled = false
   try {
     await Promise.race([
       bot.fish(),
@@ -169,6 +172,7 @@ async function fishOnce(bot) {
   } finally {
     clearTimeout(timer)
     bot.fishing = false
+    bot.physicsEnabled = true
   }
 }
 

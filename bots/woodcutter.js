@@ -81,7 +81,7 @@ async function workLoop(bot) {
       // 0. Órdenes del panel (p. ej. volver a casa)
       if (await runPendingCommand(bot)) continue
 
-      const mcData = require('minecraft-data')(bot.version)
+      const mcData = bot.registry
 
       // 1. Sin hacha: ir a casa a por el repuesto (el Artesano deja uno allí); talar a mano es mucho más lento
       await withdrawToolsFromChest(bot, AXES, { travel: true })

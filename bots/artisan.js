@@ -28,6 +28,8 @@ const {
   returnHomeAndDeposit,
   runPendingCommand,
   setIssue,
+  idleSleep,
+  openWithTimeout,
   clearIssue,
   sleep,
   fmtPos,
@@ -125,7 +127,7 @@ async function workLoop(bot) {
       // 2. Hornos (siguen trabajando solos mientras tanto)
       await furnaceCycle(bot)
 
-      await sleep(sCfg.cycleSeconds * 1000)
+      await idleSleep(bot, sCfg.cycleSeconds * 1000)
     } catch (err) {
       console.warn(`${TAG} ⚠️ ${err.message}`)
       await sleep(5000)
@@ -248,10 +250,7 @@ async function openFurnace(bot, block) {
     await safeGoto(bot, new GoalNear(block.position.x, block.position.y, block.position.z, 2), 8)
     if (!inReach(bot, block)) return null
   }
-  return Promise.race([
-    bot.openFurnace(block),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al abrir horno')), 4000)),
-  ])
+  return openWithTimeout(bot, block, b => bot.openFurnace(b), 4000, 'horno')
 }
 
 /** Saca lo terminado y repone combustible. Devuelve 'idle' si el horno no tiene nada que fundir. */
@@ -359,10 +358,7 @@ async function openContainer(bot, block) {
     await safeGoto(bot, new GoalNear(block.position.x, block.position.y, block.position.z, 2), 10)
     if (!inReach(bot, block)) return null
   }
-  return Promise.race([
-    bot.openContainer(block),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout al abrir cofre')), 4000)),
-  ])
+  return openWithTimeout(bot, block)
 }
 
 async function checkAndCraft(bot) {

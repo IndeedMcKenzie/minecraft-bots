@@ -39,6 +39,9 @@ function botOptions(botKey) {
     version:      cfg.server.version,
     auth:         cfg.server.auth,
     viewDistance: cfg.bots[botKey].viewDistance || cfg.server.viewDistance || 'short',
+    // Ticks de física que recupera cada bot si se retrasa (mineflayer: 4). Con varios bots en el mismo proceso,
+    // recuperar ticks atrasados genera más trabajo y más retraso (bola de nieve): mejor saltárselos
+    maxCatchupTicks: (cfg.performance && cfg.performance.maxCatchupTicks) || 4,
   }
 }
 
@@ -74,7 +77,7 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   bot.once('spawn', () => {
     ctrl.issue = null
     if (bot.pathfinder) {
-      const mcData = require('minecraft-data')(bot.version)
+      const mcData = bot.registry
       const movements = new Movements(bot, mcData)
       movements.canDig = true
       movements.digCost = 10
@@ -172,6 +175,8 @@ function haltPathfinder(bot) {
  * sale reconectando (todas las rutas fallan, incluso estando en casa, donde el detector de atascos no mira).
  */
 const GOTO_FAIL_LIMIT = 8
+// Última reconexión por rutas fallidas de cada bot (por clave: el objeto bot se recrea al reconectar)
+const lastGotoReset = new Map()
 function trackGoto(bot, ok) {
   if (ok) { bot._gotoFails = 0; return }
   // Solo en los bots que recorren terreno difícil (los demás fallan rutas cortas a menudo sin estar rotos)
@@ -185,8 +190,18 @@ function trackGoto(bot, ok) {
   }
   if (++bot._gotoFails < GOTO_FAIL_LIMIT) return
   bot._gotoFails = 0
-  console.warn(`[${bot.label}] 🔄 ${GOTO_FAIL_LIMIT} rutas fallidas seguidas sin moverme de ${fmtPos(pos)}: reconecto para reiniciarme.`)
   stats.add(bot.botKey, 'atascos')
+  // Si ya se reconectó hace poco en este mismo sitio, reconectar otra vez no sirve: está encerrado de verdad
+  // (p. ej. entre roca madre). Rescate: subir a la superficie o /tp a casa
+  const prev = lastGotoReset.get(bot.botKey)
+  if (prev && prev.pos.distanceTo(pos) < 6 && Date.now() - prev.at < 10 * 60 * 1000) {
+    lastGotoReset.delete(bot.botKey)
+    console.warn(`[${bot.label}] 🆘 Sigo sin poder moverme de ${fmtPos(pos)} tras reconectar: inicio el rescate.`)
+    requestCommand(bot, 'escape')
+    return
+  }
+  lastGotoReset.set(bot.botKey, { pos: pos.clone(), at: Date.now() })
+  console.warn(`[${bot.label}] 🔄 ${GOTO_FAIL_LIMIT} rutas fallidas seguidas sin moverme de ${fmtPos(pos)}: reconecto para reiniciarme.`)
   try { bot.quit() } catch {}
 }
 
@@ -318,7 +333,7 @@ async function equipBestTool(bot, toolNames) {
 }
 
 function chestIds(bot) {
-  const mcData = require('minecraft-data')(bot.version)
+  const mcData = bot.registry
   return [
     mcData.blocksByName.chest?.id,
     mcData.blocksByName.trapped_chest?.id,
@@ -473,17 +488,77 @@ async function depositNoMerge(bot, window, type, maxCount = Infinity) {
 }
 
 // Función segura para abrir cofres con timeout de 4 segundos
-async function safeOpenContainer(bot, block) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Timeout al abrir cofre')), 4000)
-    bot.openContainer(block).then(c => {
-      clearTimeout(timer)
-      resolve(c)
-    }).catch(e => {
-      clearTimeout(timer)
-      reject(e)
+// Un cofre no se abre si tiene un bloque sólido encima; en un cofre doble basta con que lo tenga una de las
+// dos mitades. Pasaba con piedras de los pilares de rescate del minero: nadie podía abrir su cofre durante
+// horas. Antes de abrir, se quita lo que tape cualquiera de las dos mitades.
+const CHEST_DIRS = { north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0] }
+const CHEST_CW = { north: 'east', east: 'south', south: 'west', west: 'north' }
+const CHEST_CCW = { north: 'west', west: 'south', south: 'east', east: 'north' }
+
+async function unblockChest(bot, block) {
+  if (!block || !/chest/.test(block.name)) return
+  const halves = [block.position]
+  try {
+    const props = block.getProperties()
+    const dir = props.type === 'left' ? CHEST_CW[props.facing] : props.type === 'right' ? CHEST_CCW[props.facing] : null
+    if (dir) halves.push(block.position.offset(CHEST_DIRS[dir][0], 0, CHEST_DIRS[dir][1]))
+  } catch {}
+  for (const half of halves) {
+    const above = bot.blockAt(half.offset(0, 1, 0))
+    if (!above || above.boundingBox !== 'block' || /chest/.test(above.name)) continue
+    // Solo se quitan los materiales de relleno de los propios bots (pilares, andamios); nunca algo construido a mano
+    if (!SCAFFOLD_ITEMS.includes(above.name)) {
+      if (!bot._warnedBlocked) console.warn(`[${bot.label}] 🧱 El cofre ${fmtPos(half)} tiene ${above.name} encima y quizá no se pueda abrir. Quítalo tú si es así.`)
+      bot._warnedBlocked = true
+      continue
+    }
+    console.warn(`[${bot.label}] 🧱 El cofre ${fmtPos(half)} tiene ${above.name} encima (así no se abre): lo quito.`)
+    try {
+      if (!inReach(bot, above)) await safeGoto(bot, new GoalNear(above.position.x, above.position.y, above.position.z, 2), 8)
+      await bot.dig(above)
+    } catch (err) {
+      console.warn(`[${bot.label}] 🧱 No pude quitar el bloque de encima del cofre ${fmtPos(half)}: ${err.message}`)
+    }
+  }
+}
+
+/**
+ * Abre un cofre/horno/… con límite de tiempo.
+ * openFn: (block) => promesa de la ventana (bot.openContainer por defecto, bot.openFurnace para hornos).
+ */
+async function openWithTimeout(bot, block, openFn = b => bot.openContainer(b), ms = 4000, what = 'cofre') {
+  await unblockChest(bot, block)
+  try {
+    const w = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timeout al abrir ${what}`)), ms)
+      openFn(block).then(w => { clearTimeout(timer); resolve(w) }, e => { clearTimeout(timer); reject(e) })
     })
-  })
+    noteOpenResult(bot, block, true)
+    return w
+  } catch (err) {
+    noteOpenResult(bot, block, false)
+    throw err
+  }
+}
+
+async function safeOpenContainer(bot, block) {
+  return openWithTimeout(bot, block)
+}
+
+// Si un bot no consigue abrir el mismo cofre varias veces seguidas, que se vea en el panel (con el sitio
+// exacto): si no, solo se ve el efecto ("Sin pico", "no pude guardar") y no la causa
+const OPEN_FAILS_ALERT = 3
+function noteOpenResult(bot, block, ok) {
+  if (!bot._openFails) bot._openFails = new Map()
+  const key = block.position.toString()
+  if (ok) {
+    bot._openFails.delete(key)
+    if (bot._openFails.size === 0) clearIssue(bot, 'openfail')
+    return
+  }
+  const n = (bot._openFails.get(key) || 0) + 1
+  bot._openFails.set(key, n)
+  if (n >= OPEN_FAILS_ALERT) setIssue(bot, 'openfail', 'warn', `No consigo abrir ${block.name.replace(/_/g, ' ')} ${fmtPos(block.position)} (${n} intentos seguidos)`)
 }
 
 function isInventoryFull(bot) {
@@ -767,6 +842,20 @@ function findChestSpots(bot, existing) {
 // ── Órdenes del panel ────────────────────────────────────────
 // El panel deja la orden en bot.pendingCommand; cada bot la ejecuta al inicio de su bucle de trabajo.
 // Mientras tanto safeGoto devuelve false al momento, así la tarea en curso termina rápido.
+
+// ── Espera sin gastar CPU ────────────────────────────────────
+/**
+ * Espera quieto con la física en pausa (performance.pauseIdlePhysics): mineflayer simula la física de cada bot
+ * 20 veces por segundo aunque esté parado, y con 6 bots en el mismo proceso eso se nota. La posición se sigue
+ * enviando al servidor. Solo si está en el suelo y sin ruta en curso; al terminar se reactiva.
+ */
+async function idleSleep(bot, ms) {
+  const pause = cfg.performance && cfg.performance.pauseIdlePhysics &&
+    bot.entity && bot.entity.onGround && !(bot.pathfinder && bot.pathfinder.isMoving())
+  if (!pause) return sleep(ms)
+  bot.physicsEnabled = false
+  try { await sleep(ms) } finally { bot.physicsEnabled = true }
+}
 
 // ── Avisos para el panel ─────────────────────────────────────
 // Un bot avisa de un problema que le impide trabajar bien (sin herramienta, sin combustible…).
@@ -1090,14 +1179,20 @@ async function withdrawToolsFromChest(bot, toolNames = [], { travel = false } = 
   const alreadyHas = bot.inventory.items().some(i => toolNames.includes(i.name))
   if (alreadyHas) return true
 
-  if (bot._nextToolCheckAt && Date.now() < bot._nextToolCheckAt) return false
   if (!ensureHome(bot)) return false
-  if (!isNearHome(bot) && !travel) return false
+  // Dos esperas distintas: mirar el cofre estando ya en casa es barato (cada minuto); viajar a casa para
+  // buscarla y no encontrarla es caro (no repetir el viaje hasta dentro de un buen rato)
+  const now = Date.now()
+  if (bot._nextToolCheckAt && now < bot._nextToolCheckAt) return false
+  if (!isNearHome(bot)) {
+    if (!travel) return false
+    if (bot._nextToolTravelAt && now < bot._nextToolTravelAt) return false
+  }
 
   const traveled = !isNearHome(bot)
   const found = await doWithdrawTool(bot, toolNames)
-  // Si tuvo que viajar a casa para nada, no volver a intentarlo hasta dentro de un buen rato
-  bot._nextToolCheckAt = found ? 0 : Date.now() + (traveled ? TOOL_TRAVEL_RETRY_MS : CHEST_RETRY_MS)
+  bot._nextToolCheckAt = found ? 0 : Date.now() + CHEST_RETRY_MS
+  if (traveled) bot._nextToolTravelAt = found ? 0 : Date.now() + TOOL_TRAVEL_RETRY_MS
   return found
 }
 
@@ -1170,7 +1265,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
-  setIssue, clearIssue,
+  setIssue, clearIssue, openWithTimeout, idleSleep,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos
 }

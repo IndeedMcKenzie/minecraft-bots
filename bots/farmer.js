@@ -6,7 +6,7 @@ const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
-const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
+const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, idleSleep, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
 
 const FARM_RADIUS = () => cfg.search.farmRadius || 32
 
@@ -61,7 +61,7 @@ async function workLoop(bot) {
       // Órdenes del panel (p. ej. volver a casa)
       if (await runPendingCommand(bot)) continue
 
-      const mcData = require('minecraft-data')(bot.version)
+      const mcData = bot.registry
 
       // Si se ha alejado de la granja (persiguiendo hierba, objetos…), volver antes de nada
       if (bot.home && bot.entity.position.distanceTo(bot.home) > FARM_RADIUS() + 8) {
@@ -91,7 +91,7 @@ async function workLoop(bot) {
 
       await collectNearbyItems(bot, 8)
       // Los cultivos tardan minutos en crecer: si no había nada que hacer, no revisar cada 4 s (ahorra CPU)
-      await sleep(work > 0 ? 4000 : IDLE_WAIT_MS)
+      await (work > 0 ? sleep(4000) : idleSleep(bot, IDLE_WAIT_MS))
     } catch (err) {
       console.warn(`[Granjero] ⚠️ Bucle principal: ${err.message}`)
       await sleep(5000)
@@ -206,8 +206,14 @@ function findMatureCrops(bot, mcData, crop) {
   const ids = matureStateIds(bot, crop)
   if (ids.size === 0) return []
 
+  // Buscar por TIPO de bloque deja que mineflayer descarte secciones enteras mirando solo su paleta; la edad
+  // se comprueba después solo en los cultivos encontrados. (Con una función en 'matching' se construía un
+  // objeto por cada bloque del radio — cientos de miles — y bloqueaba a todos los bots varios segundos.)
+  const typeId = bot.registry.blocksByName[crop.name] && bot.registry.blocksByName[crop.name].id
+  if (typeId === undefined) return []
   const positions = bot.findBlocks({
-    matching: (block) => ids.has(block.stateId),
+    matching: typeId,
+    useExtraInfo: (block) => ids.has(block.stateId),
     point: farmCenter(bot),
     maxDistance: FARM_RADIUS(),
     count: 64,

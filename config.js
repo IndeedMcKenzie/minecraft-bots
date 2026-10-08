@@ -18,6 +18,10 @@ module.exports = {
     // a trozos: con 20 el bot se queda "dudando" ante desniveles. Se puede fijar por bot con
     // bots.<bot>.pathfinderTickMs (minero y leñador usan 40 porque recorren terreno difícil).
     pathfinderTickMs: 20,
+    // Pausar la física de los bots mientras esperan quietos (ahorra CPU; la posición se sigue enviando)
+    pauseIdlePhysics: true,
+    // Ticks de física que recupera un bot retrasado (4 en mineflayer). 1 = no recuperar: evita la bola de nieve
+    maxCatchupTicks: 1,
   },
 
   // Panel de control (node panel.js / abrir_panel.bat)
