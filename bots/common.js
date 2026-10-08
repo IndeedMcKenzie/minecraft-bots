@@ -11,6 +11,7 @@ const stats = require('./stats')
 const BAD_BLOCK_MS = 5 * 60 * 1000   // Tiempo que un bloque inalcanzable queda ignorado
 const STUCK_ZONE_MS = 30 * 60 * 1000 // Tiempo que una zona donde se atascó queda prohibida
 const STUCK_ZONE_RADIUS = 10         // Radio de esa zona prohibida
+const TOOL_TRAVEL_RETRY_MS = 10 * 60 * 1000 // Sin herramienta en casa: espera antes de volver a viajar a por ella
 const CHEST_RETRY_MS = 60 * 1000     // Espera antes de reintentar guardar/sacar del cofre tras un fallo
 const REACH = 4.5                    // Alcance de interacción en supervivencia (1.21)
 const TRAVEL_SEGMENT = 48            // Longitud de cada tramo al viajar lejos (dentro de chunks cargados)
@@ -171,11 +172,42 @@ function haltPathfinder(bot) {
   try { bot.pathfinder.setGoal(null) } catch {}
 }
 
+/**
+ * Vigila las rutas fallidas seguidas sin moverse del sitio. A veces el bot se queda en un estado del que solo
+ * sale reconectando (todas las rutas fallan, incluso estando en casa, donde el detector de atascos no mira).
+ */
+const GOTO_FAIL_LIMIT = 8
+function trackGoto(bot, ok) {
+  if (ok) { bot._gotoFails = 0; return }
+  // Solo en los bots que recorren terreno difícil (los demás fallan rutas cortas a menudo sin estar rotos)
+  if (!cfg.bots[bot.botKey]?.stuckWatch) return
+  const pos = bot.entity && bot.entity.position
+  if (!pos || bot.stopped) return
+  if (!bot._gotoFails || !bot._gotoFailPos || bot._gotoFailPos.distanceTo(pos) > 4) {
+    bot._gotoFails = 1
+    bot._gotoFailPos = pos.clone()
+    return
+  }
+  if (++bot._gotoFails < GOTO_FAIL_LIMIT) return
+  bot._gotoFails = 0
+  console.warn(`[${bot.label}] 🔄 ${GOTO_FAIL_LIMIT} rutas fallidas seguidas sin moverme de ${fmtPos(pos)}: reconecto para reiniciarme.`)
+  stats.add(bot.botKey, 'atascos')
+  try { bot.quit() } catch {}
+}
+
 function safeGoto(bot, goal, minTimeoutSeconds = 25) {
+  return attemptGoto(bot, goal, minTimeoutSeconds).then(result => {
+    if (result !== null) trackGoto(bot, result)
+    return !!result
+  })
+}
+
+// Devuelve true/false, o null si no llegó a intentarlo (bot parado u orden del panel pendiente)
+function attemptGoto(bot, goal, minTimeoutSeconds) {
   return new Promise((resolve) => {
-    if (bot.stopped || !bot.entity) return resolve(false)
+    if (bot.stopped || !bot.entity) return resolve(null)
     // Hay una orden pendiente: abandonar la tarea actual para atenderla cuanto antes
-    if (bot.pendingCommand && !bot.commandRunning) return resolve(false)
+    if (bot.pendingCommand && !bot.commandRunning) return resolve(null)
     // Descartar una parada pendiente de una ruta anterior, para que no cancele esta nada más empezar
     try { bot.pathfinder.setGoal(null) } catch {}
 
@@ -208,7 +240,8 @@ function safeGoto(bot, goal, minTimeoutSeconds = 25) {
           if (!finished) { finished = true; clearTimeout(timer); resolve(isAtGoal(bot, goal)) }
         })
         .catch(() => {
-          if (!finished) { finished = true; clearTimeout(timer); resolve(false) }
+          // Cortada por una orden del panel: no es un fallo de la ruta
+          if (!finished) { finished = true; clearTimeout(timer); resolve(bot.pendingCommand ? null : false) }
         })
     } catch (e) {
       if (!finished) { finished = true; clearTimeout(timer); resolve(false) }
@@ -1020,8 +1053,10 @@ async function withdrawToolsFromChest(bot, toolNames = [], { travel = false } = 
   if (!ensureHome(bot)) return false
   if (!isNearHome(bot) && !travel) return false
 
+  const traveled = !isNearHome(bot)
   const found = await doWithdrawTool(bot, toolNames)
-  bot._nextToolCheckAt = found ? 0 : Date.now() + CHEST_RETRY_MS
+  // Si tuvo que viajar a casa para nada, no volver a intentarlo hasta dentro de un buen rato
+  bot._nextToolCheckAt = found ? 0 : Date.now() + (traveled ? TOOL_TRAVEL_RETRY_MS : CHEST_RETRY_MS)
   return found
 }
 

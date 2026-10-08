@@ -24,6 +24,7 @@ const {
   isBad,
   inStuckZone,
   inReach,
+  teleportTo,
   sleep,
   fmtPos,
 } = require('./common')
@@ -84,8 +85,8 @@ async function workLoop(bot) {
 
       const mcData = require('minecraft-data')(bot.version)
 
-      // 1. Si pasa cerca de casa sin hacha, revisar los cofres
-      await withdrawToolsFromChest(bot, AXES)
+      // 1. Sin hacha: ir a casa a por el repuesto (el Artesano deja uno allí); talar a mano es mucho más lento
+      await withdrawToolsFromChest(bot, AXES, { travel: true })
 
       // 2. Inventario lleno: volver a casa, guardar todo (menos un hacha, comida y algunos brotes) y regresar
       if (isInventoryFull(bot)) {
@@ -108,6 +109,14 @@ async function workLoop(bot) {
       bot.currentTarget = logBlock ? logBlock.position : null // si se atasca yendo, se descarta
 
       if (!logBlock) {
+        // Tras un rescate o al volver de guardar puede estar lejos del bosque donde talaba: volver allí
+        // con /tp en vez de explorar a ciegas desde casa (alrededor de casa ya no suele quedar nada)
+        if (bot.lastForest && bot.entity.position.distanceTo(bot.lastForest) > cfg.search.woodRadius) {
+          const forest = bot.lastForest
+          bot.lastForest = null // si allí tampoco hay árboles, explorar desde ese punto
+          console.log(`[Leñador] 🧭 Aquí no hay árboles: vuelvo al último bosque ${fmtPos(forest)}...`)
+          if (await teleportTo(bot, forest)) continue
+        }
         console.log('[Leñador] 🌲 No hay árboles cerca. Explorando...')
         await explore(bot, 32)
         await sleep(500)
@@ -132,6 +141,7 @@ async function workLoop(bot) {
         continue
       }
       treesCut++
+      bot.lastForest = logBlock.position.clone()
       stats.add('woodcutter', 'arboles')
 
       // 7. Replantar brote

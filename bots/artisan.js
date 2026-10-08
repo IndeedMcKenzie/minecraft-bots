@@ -145,23 +145,50 @@ async function furnaceCycle(bot) {
   const furnaces = await ensureFurnaces(bot)
   if (furnaces.length === 0) return
 
-  // Recoger lo terminado y ver qué hornos están libres
-  const idle = []
+  // Recoger lo terminado y ver qué hornos están libres o parados sin combustible
+  const idle = [], noFuel = []
+  let unfueledItems = 0
   for (const f of furnaces) {
     const state = await serviceFurnace(bot, f)
     if (state === 'idle') idle.push(f)
+    else if (state && state.noFuel) { noFuel.push(f); unfueledItems += state.noFuel }
   }
 
   await storeOutputs(bot)
+
+  // Hornos con material pero sin combustible: traerlo del almacén y reponerlo
+  if (noFuel.length > 0) {
+    await ensureFuel(bot, unfueledItems)
+    if (bot.entity.position.distanceTo(bot.home) > 12) await teleportTo(bot, bot.home)
+    for (const f of noFuel) await serviceFurnace(bot, f)
+  }
 
   // Cargar los hornos libres (trayendo material del almacén si hace falta)
   if (idle.length > 0) {
     if (!bot.inventory.items().some(i => isInput(i.name))) await fetchSmeltables(bot, idle.length)
     if (bot.inventory.items().some(i => isInput(i.name))) {
+      // Puede tener material de antes en el inventario pero no combustible: que no cargue hornos que no arden
+      await ensureFuel(bot, Math.min(countOf(bot, isInput), idle.length * sCfg.batchPerFurnace))
       if (bot.entity.position.distanceTo(bot.home) > 12) await teleportTo(bot, bot.home)
       for (const f of idle) await loadFurnace(bot, f)
     }
   }
+}
+
+const fuelUnits = bot => bot.inventory.items().filter(i => isFuel(i.name)).reduce((a, i) => a + i.count * fuelValue(i.name), 0)
+
+/** Trae del almacén combustible para fundir `items` objetos: carbón primero; si no llega, madera. */
+async function ensureFuel(bot, items) {
+  if (fuelUnits(bot) >= items) return
+  await fetchFromWarehouse(bot, [
+    { test: n => n === 'coal' || n === 'charcoal', max: Math.ceil((items - fuelUnits(bot)) / 8), cats: ['Minerales', 'Varios'] },
+  ], 'Artesano')
+  if (fuelUnits(bot) < items) {
+    await fetchFromWarehouse(bot, [
+      { test: n => /_log$|_planks$/.test(n), max: Math.ceil((items - fuelUnits(bot)) / 1.5), cats: ['Madera'] },
+    ], 'Artesano')
+  }
+  if (fuelUnits(bot) < items) console.warn(`${TAG} ⚠️ No queda combustible suficiente en el almacén (carbón o madera).`)
 }
 
 function findFurnaces(bot) {
@@ -236,8 +263,13 @@ async function serviceFurnace(bot, block) {
     }
     const input = furnace.inputItem()
     if (!input) return 'idle'
-    // Con material dentro pero sin combustible (se acabó): reponer
-    if (!furnace.fuelItem()) await putFuelFor(bot, furnace, input.count)
+    // Con material dentro pero sin combustible (se acabó): reponer. Sin el fuego encendido
+    // (furnace.fuel) y sin combustible que poner, el horno está parado: hay que traer más.
+    if (!furnace.fuelItem()) {
+      await putFuelFor(bot, furnace, input.count)
+      await sleep(300)
+      if (!furnace.fuelItem() && !(furnace.fuel > 0)) return { noFuel: input.count }
+    }
     return 'busy'
   } catch {
     return 'error'
@@ -291,21 +323,9 @@ async function fetchSmeltables(bot, idleFurnaces) {
     return
   }
 
-  // Combustible: carbón primero; si no llega, madera
-  const fuelUnits = () => bot.inventory.items().filter(i => isFuel(i.name)).reduce((a, i) => a + i.count * fuelValue(i.name), 0)
-  const allInputs = countOf(bot, isInput)
-  if (fuelUnits() < allInputs) {
-    await fetchFromWarehouse(bot, [
-      { test: n => n === 'coal' || n === 'charcoal', max: Math.ceil((allInputs - fuelUnits()) / 8), cats: ['Minerales', 'Varios'] },
-    ], 'Artesano')
-  }
-  if (fuelUnits() < allInputs) {
-    await fetchFromWarehouse(bot, [
-      { test: n => /_log$|_planks$/.test(n), max: Math.ceil((allInputs - fuelUnits()) / 1.5), cats: ['Madera'] },
-    ], 'Artesano')
-  }
+  await ensureFuel(bot, countOf(bot, isInput))
   const summary = Object.entries(got).map(([n, c]) => `${n.replace(/_/g, ' ')} ×${c}`).join(' · ')
-  console.log(`${TAG} 🏬 Traído del almacén para los hornos: ${summary}${fuelUnits() < allInputs ? ' (⚠️ poco combustible)' : ''}`)
+  console.log(`${TAG} 🏬 Traído del almacén para los hornos: ${summary}`)
   await teleportTo(bot, bot.home)
 }
 
@@ -424,7 +444,10 @@ async function craftTool(bot, family) {
   if (!table) return null
   const before = countOf(bot, n => n === itemName)
   if (!await craft(bot, itemName, table)) return null
-  if (countOf(bot, n => n === itemName) <= before) return null
+  if (countOf(bot, n => n === itemName) <= before) {
+    console.warn(`${TAG} El crafteo de ${itemName.replace(/_/g, ' ')} no dio resultado (no apareció en el inventario).`)
+    return null
+  }
   console.log(`${TAG} 🔨 Fabricado: ${itemName.replace(/_/g, ' ')}.`)
   stats.add('artisan', 'herramientas')
   stats.addDetail('herramientas', itemName)
@@ -460,7 +483,10 @@ async function craft(bot, itemName, table) {
   if (!item) return false
   if (!inReach(bot, table)) {
     await safeGoto(bot, new GoalNear(table.position.x, table.position.y, table.position.z, 2), 10)
-    if (!inReach(bot, table)) return false
+    if (!inReach(bot, table)) {
+      console.warn(`${TAG} No llego a la mesa de trabajo ${fmtPos(table.position)}.`)
+      return false
+    }
   }
   const recipe = bot.recipesFor(item.id, null, 1, table)[0]
   if (!recipe) {
