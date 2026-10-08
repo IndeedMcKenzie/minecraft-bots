@@ -14,7 +14,6 @@ const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
-const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
@@ -84,7 +83,6 @@ function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('artisan'))
 
   bot.loadPlugin(pathfinder)
-  bot.loadPlugin(autoEat)
 
   setupBot(bot, 'Artesano', () => createBot(ctrl), 'artisan', ctrl)
 

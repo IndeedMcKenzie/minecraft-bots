@@ -124,6 +124,12 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
     .filter(([k]) => cats.size === 0 || cats.has(k))
     .flatMap(([k, list]) => list.map(chest => Object.assign(chest, { catKey: k })))
     .sort((a, b) => a.position.distanceTo(bot.entity.position) - b.position.distanceTo(bot.entity.position))
+  // Primero los cofres donde el inventario dice que está lo que se busca; los que seguro que no lo tienen, al final
+  const knownRank = chest => {
+    const has = inventory.chestHas(chest, name => remaining.some(r => r.test(name)))
+    return has === true ? 0 : has === null ? 1 : 2
+  }
+  chests.sort((a, b) => knownRank(a) - knownRank(b))
 
   const before = countByName(bot)
   for (const chest of chests) {
@@ -154,4 +160,4 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
   return got
 }
 
-module.exports = { warehouseHome, categoryChests, isWarehouseChest, signLabel, fetchFromWarehouse, normalize, displayCat }
+module.exports = { warehouseHome, warehouseRadius, loadAssignments, categoryChests, isWarehouseChest, signLabel, fetchFromWarehouse, normalize, displayCat }

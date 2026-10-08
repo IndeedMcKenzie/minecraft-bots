@@ -77,7 +77,7 @@ UI at `http://127.0.0.1:3000`.
 ### Each bot card shows
 - Status (online / connecting / reconnecting / stopped), current activity and red warnings.
 - ❤️ health, 🍗 food, 📍 position, 🎒 free slots and 🏠 home (with `N/15` chests).
-- **Full inventory:** chips with 🔒 are the **reserve** the bot keeps on purpose when storing (tool, food,
+- **Full inventory:** chips with 🔒 are the **reserve** the bot keeps on purpose when storing (tool,
   seeds…). `cobblestone ×39 (🔒32)` means it keeps 32 and will store 7.
 - `📦 N to store · last stored X ago`.
 - **Alerts** (see below); the card border turns yellow or red when it has any.
@@ -130,6 +130,40 @@ for **this session** or **all time**:
 
 Saved to `data/stats.json` (every minute and on shutdown). Delete that file to start over.
 
+### 🗺️ Map tab
+Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#mapa`), and each bot card has a
+**🗺️ Ver en el mapa** button that opens it centred on the bot. It only loads while the tab is open. Set it in
+`config.js` → `panel.bluemapUrl` (`null` = no tab).
+
+### 🖥️ Console tab
+Needs the **BotHelper** plugin (below). Runs server commands as the console (full permissions) and shows the
+reply; ↑/↓ recall previous ones. Every command is written to the panel log.
+
+## 🔌 Server plugin: BotHelper
+
+A Paper plugin (`server-plugin/` folder) that helps the bots from inside the server:
+
+| | |
+|---|---|
+| ⚡ Performance | Bots **don't spawn mobs** around them and **don't count for sleeping** |
+| 🎣 Fishing | Whatever a bot catches **appears at its feet** instead of flying towards it (from some shores it hit the edge, fell into the water and was lost) |
+| 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out** |
+| 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console** |
+
+It only listens on this PC (`127.0.0.1:8200`) and requires a key it creates on startup
+(`plugins/BotHelper/token.txt`, which the panel reads). **Without the plugin the panel works as before.**
+
+**Install** (needs the JDK, which the server's Java already includes; no Gradle or Maven):
+```
+powershell -ExecutionPolicy Bypass -File server-plugin\build.ps1 -Install
+```
+It compiles against the server's own libraries (`C:\Server` by default; another folder with `-ServerDir`), copies
+`BotHelper.jar` to `plugins/`, and then you **restart the server**. Settings live in `plugins/BotHelper/config.yml`
+(bot names, which protections to use…), plus `/bothelper` / `/bothelper reload` in game. `config.js` →
+`serverPlugin` holds the plugin address and the path to `token.txt`.
+
+Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft:bat]` in the console.
+
 ---
 
 ## 🧠 How the bots work
@@ -147,8 +181,8 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 
 | Bot | Reserve |
 |---|---|
-| Woodcutter | 1 axe, 8 saplings of each type, up to 16 of each food |
-| Miner | 1 pickaxe, 32 cobblestone + 32 cobbled deepslate (for rescue pillars), up to 16 of each food |
+| Woodcutter | 1 axe and 8 saplings of each type |
+| Miner | 1 pickaxe and 32 cobblestone + 32 cobbled deepslate (for rescue pillars) |
 | Farmer | 1 hoe, 32 wheat seeds, 16 carrots / potatoes / beetroot seeds |
 | Fisher | 1 fishing rod |
 | Rancher | 1 sword, 64 wheat, fences and dirt to repair the pen |
@@ -272,6 +306,8 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 
 ## 📌 Good to know
 
+- **No hunger:** every time a bot spawns (also after dying) it gives itself infinite **Saturation**
+  (`config.js` → `starterCommands`), so it never needs to eat. With `keepInventory` on, a death costs nothing.
 - **OP & offline mode:** the bots need OP for `/tp`, `/give`, `/summon` and the physics fix. In offline mode,
   anyone using a bot's name inherits its OP. On shared servers, use a login (password) plugin or change the
   bot usernames in `config.js`.
@@ -295,6 +331,7 @@ abrir_panel.bat        Opens the panel on Windows (recommended)
 panel.js               Manager for the 7 bots + panel server (127.0.0.1:3000)
 panel/index.html       Panel UI
 panel/alerts.js        Bot alerts
+panel/serverlink.js    Link to the BotHelper plugin
 config.js              All the configuration
 bots/common.js         Shared logic: home, travel, chests, rescue, panel commands, /give, /tp
 bots/stats.js          Statistics counters
@@ -307,6 +344,7 @@ bots/organizer.js      Organizer
 bots/rancher.js        Rancher
 bots/artisan.js        Artisan (furnaces + tools)
 bots/warehouse.js      Warehouse access (used by the artisan and orders)
+server-plugin/         BotHelper plugin for Paper (source and build.ps1)
 data/                  Your world's data (created automatically, not committed):
   home_<bot>.json        each bot's home
   almacen.json           category of each organizer chest (backup of the signs)

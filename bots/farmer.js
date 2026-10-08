@@ -3,11 +3,10 @@
 // ============================================================
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
-const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
-const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
+const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
 
 const FARM_RADIUS = () => cfg.search.farmRadius || 32
 
@@ -43,7 +42,6 @@ function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('farmer'))
 
   bot.loadPlugin(pathfinder)
-  bot.loadPlugin(autoEat)
 
   setupBot(bot, 'Granjero', () => createBot(ctrl), 'farmer', ctrl)
 
@@ -144,6 +142,8 @@ async function gatherSeedsFromGrass(bot, mcData) {
 
 async function harvestMatureCrops(bot, mcData) {
   let harvested = 0
+  let unreachable = 0
+  let missedInARow = 0
   for (const crop of CROPS) {
     const matureBlocks = findMatureCrops(bot, mcData, crop)
     for (const block of matureBlocks) {
@@ -151,8 +151,18 @@ async function harvestMatureCrops(bot, mcData) {
       const reached = await safeGoto(bot, new GoalNear(block.position.x, block.position.y, block.position.z, 1), 10)
       if (!reached) {
         markBad(bot, block.position)
+        unreachable++
+        // Varios seguidos sin poder llegar: probablemente se ha caído fuera de la granja (p. ej. colina abajo).
+        // Volver a casa con /tp y reintentarlos desde allí, en vez de pasar minutos intentándolo uno a uno
+        if (++missedInARow >= 3 && bot.home && bot.entity.position.distanceTo(bot.home) > 6) {
+          console.log(`[Granjero] 🌀 No llego a los cultivos desde ${fmtPos(bot.entity.position)}: vuelvo a casa con /tp.`)
+          for (const b of matureBlocks) bot.badBlocks.delete(b.position.toString())
+          await teleportTo(bot, bot.home)
+          return harvested
+        }
         continue
       }
+      missedInARow = 0
 
       try {
         await bot.dig(block)
@@ -164,6 +174,7 @@ async function harvestMatureCrops(bot, mcData) {
       }
     }
   }
+  if (unreachable > 0) console.warn(`[Granjero] ⚠️ ${unreachable} cultivos maduros inalcanzables (los dejo un rato).`)
   if (harvested > 0) {
     console.log(`[Granjero] ✅ Cosechados ${harvested} cultivos.`)
     stats.add('farmer', 'cosechas', harvested)

@@ -11,7 +11,6 @@ const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
-const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
@@ -70,7 +69,6 @@ function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('organizer'))
 
   bot.loadPlugin(pathfinder)
-  bot.loadPlugin(autoEat)
 
   setupBot(bot, 'Organizador', () => createBot(ctrl), 'organizer', ctrl)
 
@@ -114,7 +112,8 @@ async function workLoop(bot) {
         await organizeRound(bot)
         nextRound = Date.now() + orgCfg.intervalMinutes * 60 * 1000
         const last = inventory.summary().lastScan
-        if (!bot.pendingCommand && (!last || Date.now() - last > SCAN_EVERY_MS)) await scanInventory(bot)
+        // Con el plugin BotHelper el panel ya sabe el contenido real: no hace falta revisar cofre por cofre
+        if (!bot.pendingCommand && !inventory.isLive() && (!last || Date.now() - last > SCAN_EVERY_MS)) await scanInventory(bot)
       }
       await sleep(2000)
     } catch (err) {

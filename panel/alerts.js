@@ -92,7 +92,7 @@ function createAlerts({ keys, getInfo, onChange }) {
     // Muerte reciente
     const deathsBefore = valueAgo(key, 'muertes', DEATH_WINDOW_MIN)
     if (deathsBefore !== null && (c.muertes || 0) > deathsBefore) {
-      out.push({ id: 'death', level: 'warn', since: now, text: `Ha muerto en los últimos ${DEATH_WINDOW_MIN} min (perdió lo que llevaba encima)` })
+      out.push({ id: 'death', level: 'warn', since: now, text: `Ha muerto en los últimos ${DEATH_WINDOW_MIN} min` })
     }
 
     // Productividad: solo si lleva conectado todo el periodo y el bot no ha explicado ya por qué no trabaja

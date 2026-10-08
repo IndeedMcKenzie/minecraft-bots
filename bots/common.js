@@ -90,22 +90,17 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
 
     if (botKey && cfg.bots[botKey]?.stuckWatch) startStuckWatch(bot)
 
-    if (bot.autoEat && typeof bot.autoEat.enableAuto === 'function') {
-      try { bot.autoEat.enableAuto() } catch {}
-    }
-
-    if (Array.isArray(cfg.starterCommands) && cfg.starterCommands.length > 0) {
-      setTimeout(() => {
-        if (bot.stopped) return
-        for (const cmd of cfg.starterCommands) {
-          const resolved = cmd.replace('{username}', bot.username)
-          bot.chat(resolved)
-        }
-      }, 3000)
-    }
-
     // Esperar a que carguen los chunks antes de buscar el cofre de casa
     setTimeout(() => { if (!bot.stopped) initHome(bot) }, 2000)
+  })
+
+  // Comandos de inicio (config.js → starterCommands) en cada aparición, también al reaparecer tras morir
+  bot.on('spawn', () => {
+    if (!Array.isArray(cfg.starterCommands) || cfg.starterCommands.length === 0) return
+    setTimeout(() => {
+      if (bot.stopped) return
+      for (const cmd of cfg.starterCommands) bot.chat(cmd.replace('{username}', bot.username))
+    }, 3000)
   })
 
   bot.on('chat', (username, message) => handleChatCommand(bot, username, message))
@@ -251,7 +246,10 @@ function attemptGoto(bot, goal, minTimeoutSeconds) {
 
 function isAtGoal(bot, goal) {
   if (!bot.entity || typeof goal.isEnd !== 'function') return true
-  try { return goal.isEnd(bot.entity.position.floored()) } catch { return true }
+  // Como hace el propio pathfinder: sobre un bloque más bajo que uno entero (tierra arada, camino, alfombra…)
+  // los pies quedan dentro del bloque de abajo, así que también vale la posición un bloque más arriba
+  const feet = bot.entity.position.floored()
+  try { return goal.isEnd(feet) || goal.isEnd(feet.offset(0, 1, 0)) } catch { return true }
 }
 
 function distXZ(a, b) {
@@ -360,12 +358,31 @@ function initHome(bot) {
     return
   }
 
-  const chest = bot.findBlock({ matching: chestIds(bot), maxDistance: (cfg.search && cfg.search.chestRadius) || 48 })
+  // El cofre más cercano que no sea de la casa de otro bot (ni del almacén del organizador)
+  const others = otherBotHomes(bot)
+  const chest = bot.findBlock({
+    matching: chestIds(bot),
+    maxDistance: (cfg.search && cfg.search.chestRadius) || 48,
+    useExtraInfo: b => !others.some(h => h.distanceTo(b.position) <= OTHER_HOME_MARGIN),
+  })
   if (chest) {
     setHome(bot, chest.position)
   } else {
     console.log(`[${bot.label}] 🏠 Sin casa todavía: usaré el primer cofre que encuentre.`)
   }
+}
+
+// Casas de los demás bots: sus cofres no se adoptan como casa propia (se mezclarían las cosas de los dos)
+const OTHER_HOME_MARGIN = 10
+function otherBotHomes(bot) {
+  const homes = []
+  for (const key of Object.keys(cfg.bots)) {
+    if (key === bot.botKey) continue
+    const fixed = cfg.bots[key].home
+    if (fixed) { homes.push(toVec3(fixed)); continue }
+    try { homes.push(toVec3(JSON.parse(fs.readFileSync(path.join(HOMES_DIR, `home_${key}.json`), 'utf8')))) } catch {}
+  }
+  return homes
 }
 
 function setHome(bot, pos) {
@@ -550,7 +567,18 @@ async function depositAtHome(bot, keepItemNames, keepAmounts) {
 async function depositAtHomeInner(bot, keepItemNames, keepAmounts) {
   if (!await reachHome(bot)) return 'unreachable'
 
-  const chests = findHomeChests(bot)
+  let chests = findHomeChests(bot)
+  if (chests.length === 0) {
+    // Antes de olvidar la casa, asegurarse de que el cofre ha desaparecido de verdad: justo después de llegar
+    // (o tras reiniciarse el servidor) la zona puede no estar cargada todavía y no se vería ningún cofre
+    await waitUntil(() => bot.blockAt(bot.home) !== null, 5000)
+    await sleep(2000)
+    chests = findHomeChests(bot)
+  }
+  if (chests.length === 0 && bot.blockAt(bot.home) === null) {
+    console.warn(`[${bot.label}] 🏚️ La zona de casa ${fmtPos(bot.home)} aún no ha cargado; lo intento más tarde.`)
+    return 'unreachable'
+  }
   if (chests.length === 0) {
     // El cofre de casa ya no existe: olvidar la casa para adoptar otra
     console.warn(`[${bot.label}] 🏚️ No hay cofres en casa ${fmtPos(bot.home)}. Buscaré otra casa.`)

@@ -1,0 +1,14 @@
+name: BotHelper
+version: 1.0.0
+main: dev.botsminecraft.bothelper.BotHelper
+api-version: "26.2"
+description: Ayuda a los bots de Mineflayer (rendimiento y protección) y da datos del servidor al panel de control.
+commands:
+  bothelper:
+    description: Estado de BotHelper o recargar su configuración
+    usage: /bothelper [reload]
+    permission: bothelper.admin
+permissions:
+  bothelper.admin:
+    description: Usar /bothelper
+    default: op

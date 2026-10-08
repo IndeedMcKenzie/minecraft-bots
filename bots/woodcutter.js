@@ -5,7 +5,6 @@
 // ============================================================
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear, GoalBlock } } = require('mineflayer-pathfinder')
-const { loader: autoEat } = require('mineflayer-auto-eat')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
@@ -50,21 +49,18 @@ const SAPLING_MAP = {
 }
 
 const AXES = ['netherite_axe', 'diamond_axe', 'iron_axe', 'golden_axe', 'stone_axe', 'wooden_axe']
-const FOODS = ['bread', 'cooked_beef', 'cooked_porkchop', 'cooked_mutton', 'apple', 'cooked_chicken', 'baked_potato']
 
 // Lo que se queda al guardar: 1 hacha de cada tipo (las repetidas van al cofre),
-// 8 brotes de cada tipo para replantar y hasta 16 de cada comida para no pasar hambre
+// y 8 brotes de cada tipo para replantar
 const KEEP_AMOUNTS = Object.fromEntries([
   ...AXES.map(a => [a, 1]),
   ...Object.values(SAPLING_MAP).map(s => [s, 8]),
-  ...FOODS.map(f => [f, 16]),
 ])
 
 function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('woodcutter'))
 
   bot.loadPlugin(pathfinder)
-  bot.loadPlugin(autoEat)
 
   setupBot(bot, 'Leñador', () => createBot(ctrl), 'woodcutter', ctrl)
 

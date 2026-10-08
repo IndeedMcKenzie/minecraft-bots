@@ -52,8 +52,31 @@ function chestKey(block) {
   return (other.x < pos.x || (other.x === pos.x && other.z < pos.z)) ? keyOf(other) : keyOf(pos)
 }
 
+// Con el plugin BotHelper el panel recibe el contenido real de los cofres (setLive). Mientras esos datos
+// estén frescos, lo que ven los bots no hace falta (y podría pisar un dato exacto con uno aproximado).
+const LIVE_FRESH_MS = 2 * 60 * 1000
+let liveAt = 0
+const isLive = () => Date.now() - liveAt < LIVE_FRESH_MS
+
+/** Sustituye todo el inventario por el contenido real leído por el plugin: [{ key: 'x,y,z', cat, items }]. */
+function setLive(chests) {
+  data.chests = {}
+  for (const c of chests) data.chests[c.key] = { cat: c.cat, items: c.items, t: Date.now() }
+  liveAt = Date.now()
+  data.lastScan = liveAt
+  scheduleSave()
+}
+
+/** ¿Se sabe que este cofre tiene algo que cumple test? true / false / null (no se sabe). */
+function chestHas(block, test) {
+  const c = data.chests[chestKey(block)]
+  if (!c) return null
+  return Object.keys(c.items).some(test)
+}
+
 /** Apunta el contenido de un cofre del almacén (bloque del cofre y lista de objetos de mineflayer). */
 function recordChest(block, cat, items) {
+  if (isLive()) return
   const totals = {}
   for (const i of items) totals[i.name] = (totals[i.name] || 0) + i.count
   data.chests[chestKey(block)] = { cat, items: totals, t: Date.now() }
@@ -90,6 +113,7 @@ function summary() {
     lastScan: data.lastScan,
     oldest: times.length ? Math.min(...times) : null,
     newest: times.length ? Math.max(...times) : null,
+    live: isLive(),
   }
 }
 
@@ -98,4 +122,4 @@ function catsWith(itemName) {
   return [...new Set(Object.values(data.chests).filter(c => c.items[itemName]).map(c => c.cat).filter(Boolean))]
 }
 
-module.exports = { recordChest, finishScan, summary, catsWith, chestKey }
+module.exports = { recordChest, finishScan, summary, catsWith, chestKey, setLive, isLive, chestHas }

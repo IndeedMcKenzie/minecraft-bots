@@ -7,7 +7,6 @@
 // ============================================================
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
-const { loader: autoEat } = require('mineflayer-auto-eat')
 const cfg = require('../config')
 const stats = require('./stats')
 const {
@@ -54,8 +53,6 @@ const ORE_PRIORITY = [
   'redstone_ore',          'deepslate_redstone_ore',
 ]
 
-const FOODS = ['bread', 'cooked_beef', 'cooked_porkchop', 'apple', 'baked_potato']
-
 const JUNK_NAMES = [
   'cobblestone', 'cobbled_deepslate', 'dirt', 'gravel',
   'sand', 'andesite', 'granite', 'diorite', 'tuff',
@@ -65,7 +62,6 @@ function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('miner'))
 
   bot.loadPlugin(pathfinder)
-  bot.loadPlugin(autoEat)
 
   setupBot(bot, 'Minero', () => createBot(ctrl), 'miner', ctrl)
 
@@ -77,10 +73,9 @@ function createBot(ctrl = {}) {
   return bot
 }
 
-// Al guardar: 1 pico de cada tipo, una reserva de andamio (adoquín / pizarra profunda) y hasta 16 de cada comida
+// Al guardar: 1 pico de cada tipo y una reserva de andamio (adoquín / pizarra profunda)
 const KEEP_AMOUNTS = {
   ...Object.fromEntries(PICKAXES.map(p => [p, 1])),
-  ...Object.fromEntries(FOODS.map(f => [f, 16])),
   cobblestone: 32,
   cobbled_deepslate: 32,
 }

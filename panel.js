@@ -11,6 +11,7 @@ const cfg = require('./config')
 const stats = require('./bots/stats')
 const { createAlerts } = require('./panel/alerts')
 const inventory = require('./bots/inventory')
+const serverlink = require('./panel/serverlink')
 
 const PORT = (cfg.panel && cfg.panel.port) || 3000
 const MAX_LOGS = 500
@@ -127,6 +128,16 @@ const alerts = createAlerts({
 })
 const evaluateAlerts = () => { for (const d of BOT_DEFS) alerts.evaluate(d.key) }
 
+// Alertas del propio servidor (necesitan el plugin BotHelper)
+function serverAlerts() {
+  const info = serverlink.serverInfo()
+  const out = []
+  if (info.online && info.lowTpsSince && Date.now() - info.lowTpsSince >= 60000) {
+    out.push({ id: 'tps', level: 'warn', since: info.lowTpsSince, text: `El servidor va lento: ${info.tps[0]} TPS (lo normal es 20)` })
+  }
+  return out
+}
+
 // ── Estado ───────────────────────────────────────────────────
 let serverOnline = null
 
@@ -200,7 +211,8 @@ function botState(def) {
 const startedAt = Date.now()
 function getState() {
   return {
-    server: { host: cfg.server.host, port: cfg.server.port, online: serverOnline },
+    server: { host: cfg.server.host, port: cfg.server.port, online: serverOnline, plugin: serverlink.serverInfo() },
+    serverAlerts: serverAlerts(),
     startedAt,
     memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
     map: (cfg.panel && cfg.panel.bluemapUrl) || null,
@@ -230,6 +242,8 @@ function onlinePlayers() {
 }
 
 function warehouseState() {
+  // Con el plugin, el contenido se lee directamente de los cofres (como mucho cada 10 s mientras se mira)
+  if (serverlink.isOnline()) serverlink.refreshChestsIfOlder(10000)
   const org = onlineBot('organizer')
   const req = org && (org.delivering || org.pendingRequest)
   return {
@@ -242,6 +256,7 @@ function warehouseState() {
       organizing: !!(org && (org.organizing || org.pendingCommand === 'organize')),
       request: req ? { item: req.item, count: req.count, player: req.player, started: !!org.delivering } : null,
     },
+    plugin: serverlink.isOnline(),
   }
 }
 
@@ -257,6 +272,11 @@ function readJson(req, limit = 4096) {
 }
 
 async function handleWarehouse(req, res, action) {
+  // Con el plugin, "Revisar almacén" es instantáneo y no necesita al Organizador
+  if (action === 'scan' && serverlink.isOnline()) {
+    const ok = await serverlink.refreshChests()
+    return sendJson(res, ok ? 200 : 502, ok ? { ok: true, message: 'Almacén actualizado (leído directamente del servidor)' } : { ok: false, error: 'El plugin no pudo leer los cofres' })
+  }
   const org = onlineBot('organizer')
   if (!org) return sendJson(res, 409, { ok: false, error: 'El Organizador no está conectado' })
   if (!org.home) return sendJson(res, 409, { ok: false, error: 'El Organizador no tiene almacén: usa "Fijar casa" junto a un cofre' })
@@ -281,6 +301,25 @@ async function handleWarehouse(req, res, action) {
     return sendJson(res, 200, { ok: true, message: `Pedido en marcha: ${count} × ${item.replace(/_/g, ' ')} para ${player}` })
   }
   sendJson(res, 400, { ok: false, error: 'Acción desconocida' })
+}
+
+// ── Consola del servidor (plugin BotHelper) ──────────────────
+async function handleConsole(req, res) {
+  if (!serverlink.isOnline()) return sendJson(res, 409, { ok: false, error: 'El plugin BotHelper no está conectado' })
+  const body = await readJson(req)
+  const command = body && String(body.command || '').trim()
+  if (!command || command.length > 500) return sendJson(res, 400, { ok: false, error: 'Comando vacío o demasiado largo' })
+  const ip = (req.socket.remoteAddress || '').replace(/^::ffff:/, '')
+  console.log(`[Panel] 🖥️ Consola (${ip}): /${command.replace(/^\//, '')}`)
+  try {
+    const r = await serverlink.runCommand(command)
+    return sendJson(res, 200, { ok: true, known: r.known !== false, output: r.output || [] })
+  } catch (err) {
+    // Un comando mal escrito no es un fallo del plugin: se muestra como lo haría la consola del servidor
+    const syntax = err.message.match(/^CommandSyntaxException: (.*)$/s)
+    if (syntax) return sendJson(res, 200, { ok: true, known: true, output: [], syntaxError: syntax[1] })
+    return sendJson(res, 502, { ok: false, error: err.message })
+  }
 }
 
 // ── Servidor HTTP ────────────────────────────────────────────
@@ -395,6 +434,7 @@ const server = http.createServer((req, res) => {
 
     if (parts[0] === 'api' && parts[1] === 'bots' && parts.length === 4) return handleAction(res, parts[2], parts[3])
     if (parts[0] === 'api' && parts[1] === 'warehouse' && parts.length === 3) return handleWarehouse(req, res, parts[2])
+    if (url.pathname === '/api/console') return handleConsole(req, res)
     if (parts[0] === 'api' && parts[1] === 'all' && parts.length === 3) {
       for (const d of BOT_DEFS) {
         if (parts[2] === 'start') startBot(d.key)
@@ -429,6 +469,7 @@ server.listen(PORT, HOST, () => {
   }
   checkServer()
   setInterval(checkServer, SERVER_CHECK_MS)
+  serverlink.start()
   setInterval(() => broadcast('state', getState()), STATE_INTERVAL_MS)
   setInterval(evaluateAlerts, 10000)
   // Tiempo conectado de cada bot (para las estadísticas)

@@ -337,6 +337,40 @@
   .wh-table td.order { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
   .qty { width: 78px; padding: 4px 8px; text-align: right; }
 
+  /* ── Rendimiento del servidor (plugin) ── */
+  .perf { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .perf .bad { color: var(--warn); font-weight: 600; }
+
+  /* ── Consola ── */
+  .console-view { gap: 10px; }
+  .console-out {
+    flex: 1;
+    min-height: 260px;
+    overflow: auto;
+    margin: 0;
+    padding: 10px 12px;
+    background: var(--log-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font: 12.5px/1.5 Consolas, "Cascadia Mono", ui-monospace, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .console-out .cmd { color: var(--accent); font-weight: 600; }
+  .console-out .err { color: var(--err); }
+  .console-out .muted { color: var(--muted); }
+  .console-form { display: flex; gap: 8px; }
+  .console-form input {
+    flex: 1;
+    min-width: 0;
+    font: 13px Consolas, "Cascadia Mono", ui-monospace, monospace;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 10px;
+  }
+
   /* ── Mapa (BlueMap) ── */
   .map-view { padding-bottom: 16px; }
   .map-frame {
@@ -357,6 +391,7 @@
   <header>
     <h1>🤖 Bots Minecraft</h1>
     <div class="server"><span class="dot" id="server-dot"></span><span id="server-text">Comprobando servidor…</span></div>
+    <span class="perf" id="server-perf" hidden></span>
     <span class="meta" id="meta"></span>
     <button class="alert-summary" id="alert-summary" title="Ir al primer bot con alertas">✅ Sin alertas</button>
     <nav class="views" aria-label="Vistas">
@@ -364,6 +399,7 @@
       <button class="view-tab" data-view="warehouse">📦 Almacén</button>
       <button class="view-tab" data-view="stats">📊 Estadísticas</button>
       <button class="view-tab" data-view="map" hidden>🗺️ Mapa</button>
+      <button class="view-tab" data-view="console">🖥️ Consola</button>
     </nav>
     <div class="spacer"></div>
     <div class="actions">
@@ -412,6 +448,16 @@
     <section class="panel-card">
       <div class="table-wrap"><table class="stats-table wh-table" id="wh-table"></table></div>
     </section>
+  </main>
+
+  <main id="view-console" class="console-view" hidden>
+    <div class="wh-status" id="console-status"></div>
+    <pre class="console-out" id="console-out"><span class="muted">Escribe un comando del servidor (sin / o con /), por ejemplo: time set day · weather clear · list</span>
+</pre>
+    <form class="console-form" id="console-form" autocomplete="off">
+      <input id="console-input" placeholder="Comando…  (↑ / ↓ para repetir los anteriores)" aria-label="Comando del servidor" maxlength="500">
+      <button class="primary" type="submit">Ejecutar</button>
+    </form>
   </main>
 
   <main id="view-map" class="map-view" hidden>
@@ -656,8 +702,9 @@ function renderState(state) {
     updateCard(cardEls[b.key], b)
   }
 
-  // Resumen de alertas (las 'info' no cuentan)
-  const all = state.bots.flatMap(b => (b.alerts || []).filter(a => a.level !== 'info'))
+  // Resumen de alertas (las 'info' no cuentan), incluidas las del servidor
+  const all = [...(state.serverAlerts || []), ...state.bots.flatMap(b => (b.alerts || []).filter(a => a.level !== 'info'))]
+  $('#alert-summary').title = all.length ? all.map(a => a.text).join('\n') : 'Ir al primer bot con alertas'
   const sum = $('#alert-summary')
   const errs = all.filter(a => a.level === 'err').length
   sum.className = 'alert-summary' + (errs ? ' err' : all.length ? ' warn' : '')
@@ -666,6 +713,8 @@ function renderState(state) {
   const s = state.server
   $('#server-dot').className = 'dot ' + (s.online === null ? 'warn' : s.online ? 'ok' : 'err')
   $('#server-text').textContent = `Servidor ${s.host}:${s.port} · ` + (s.online === null ? 'comprobando…' : s.online ? 'en línea' : 'sin conexión')
+  renderPerf(s.plugin)
+  renderConsoleStatus(s.plugin)
   $('#meta').textContent = `Panel activo ${ago(state.startedAt).replace('hace ', '')} · ${state.memoryMB} MB`
 }
 
@@ -776,6 +825,8 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     $('#view-stats').hidden = currentView !== 'stats'
     $('#view-warehouse').hidden = currentView !== 'warehouse'
     $('#view-map').hidden = currentView !== 'map'
+    $('#view-console').hidden = currentView !== 'console'
+    if (currentView === 'console') setTimeout(() => $('#console-input').focus(), 0)
     // El mapa 3D solo se carga mientras se ve (usa la gráfica del navegador)
     const frame = $('#map-frame')
     if (currentView === 'map' && mapUrl) {
@@ -806,6 +857,7 @@ document.querySelectorAll('[data-period]').forEach(btn => {
 
 // Abrir directamente en estadísticas con http://127.0.0.1:3000/#stats
 if (location.hash === '#stats') setTimeout(() => $('[data-view="stats"]').click(), 0)
+if (location.hash === '#consola') setTimeout(() => $('[data-view="console"]').click(), 0)
 if (location.hash === '#mapa') setTimeout(() => $('[data-view="map"]').click(), 300)
 if (location.hash === '#almacen') setTimeout(() => $('[data-view="warehouse"]').click(), 0)
 
@@ -1045,7 +1097,8 @@ function renderWarehouse() {
   const org = d.organizer
   const total = d.items.reduce((a, i) => a + i.count, 0)
   $('#wh-meta').textContent = d.chests
-    ? `${fmtNum(d.items.length)} tipos · ${fmtNum(total)} objetos en ${d.chests} cofres · revisión completa ${d.lastScan ? ago(d.lastScan) : 'pendiente'}`
+    ? `${fmtNum(d.items.length)} tipos · ${fmtNum(total)} objetos en ${d.chests} cofres · ` +
+      (d.live ? `🟢 en vivo, leído del servidor ${ago(d.lastScan)}` : `revisión completa ${d.lastScan ? ago(d.lastScan) : 'pendiente'}`)
     : ''
 
   // Jugadores (se conserva la elección)
@@ -1080,7 +1133,11 @@ function renderWarehouse() {
   st.textContent = text
   st.className = 'wh-status ' + cls
   const canOrder = org.online && org.hasHome && !org.request && players.length > 0
-  $('#wh-scan').disabled = !org.online || !org.hasHome || org.scanning || !!org.request
+  // Con el plugin, actualizar es instantáneo y no depende del Organizador
+  const scan = $('#wh-scan')
+  scan.textContent = d.plugin ? '🔄 Actualizar' : '🔄 Revisar almacén'
+  scan.title = d.plugin ? 'Leer ahora el contenido de los cofres directamente del servidor' : 'El Organizador abre todos los cofres del almacén y apunta lo que hay'
+  scan.disabled = d.plugin ? false : (!org.online || !org.hasHome || org.scanning || !!org.request)
 
   // Categorías
   const cats = [...new Set(d.items.flatMap(i => i.cats))].sort()
@@ -1184,6 +1241,86 @@ $('#wh-search').addEventListener('input', () => { if (whData) renderWarehouseTab
 $('#wh-scan').addEventListener('click', async () => {
   await post('/api/warehouse/scan')
   loadWarehouse()
+})
+
+// ── Servidor (plugin BotHelper) ─────────────────────────────
+function renderPerf(p) {
+  const el = $('#server-perf')
+  el.hidden = !p || !p.online
+  if (el.hidden) return
+  const tps = p.tps[0]
+  const usedGB = (p.memory.usedMB / 1024).toFixed(1), maxGB = (p.memory.maxMB / 1024).toFixed(1)
+  el.innerHTML = ''
+  const part = (text, bad, title) => {
+    const span = document.createElement('span')
+    span.textContent = text
+    if (bad) span.className = 'bad'
+    if (title) span.title = title
+    return span
+  }
+  const humans = p.players.filter(x => !x.bot).length
+  el.append(
+    part(`${tps.toFixed(1)} TPS`, tps < 18, `TPS (lo normal es 20) · último minuto ${p.tps[0]}, 5 min ${p.tps[1]}, 15 min ${p.tps[2]}`), ' · ',
+    part(`${Math.round(p.mspt)} ms/tick`, p.mspt > 45, 'Tiempo medio por tick (más de 50 ms = el servidor no da abasto)'), ' · ',
+    part(`RAM ${usedGB}/${maxGB} GB`, false, 'Memoria usada por el servidor de Minecraft'), ' · ',
+    part(`${fmtNum(p.entities)} entidades`, p.entities > 3000, `${fmtNum(p.chunks)} chunks cargados`), ' · ',
+    part(`👤 ${humans}`, false, `Jugadores: ${p.players.filter(x => !x.bot).map(x => x.name).join(', ') || 'ninguno'} (+${p.players.length - humans} bots)`),
+  )
+}
+
+// ── Consola ─────────────────────────────────────────────────
+const consoleHistory = []
+let historyPos = 0
+
+function renderConsoleStatus(p) {
+  const st = $('#console-status')
+  const online = !!(p && p.online)
+  st.textContent = online
+    ? 'Los comandos se ejecutan como la consola del servidor (con todos los permisos). Quedan apuntados en el registro del panel.'
+    : '⚠️ El plugin BotHelper no está conectado: la consola no está disponible.'
+  st.className = 'wh-status' + (online ? '' : ' warn')
+  $('#console-form button').disabled = !online
+}
+
+function consoleLine(text, cls) {
+  const out = $('#console-out')
+  const span = document.createElement('span')
+  if (cls) span.className = cls
+  span.textContent = text + '\n'
+  out.appendChild(span)
+  out.scrollTop = out.scrollHeight
+}
+
+$('#console-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault()
+  const input = $('#console-input')
+  const command = input.value.trim()
+  if (!command) return
+  consoleHistory.push(command)
+  historyPos = consoleHistory.length
+  input.value = ''
+  consoleLine(`> /${command.replace(/^\//, '')}`, 'cmd')
+  const btn = $('#console-form button')
+  btn.classList.add('busy')
+  try {
+    const res = await fetch('/api/console', { method: 'POST', headers: { 'X-Panel': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ command }) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data.ok === false) consoleLine(data.error || `Error ${res.status}`, 'err')
+    else if (data.syntaxError) consoleLine(`Error en el comando: ${data.syntaxError}`, 'err')
+    else if (data.output.length) data.output.forEach(l => consoleLine(l))
+    else consoleLine(data.known ? '(sin respuesta)' : 'Comando desconocido', data.known ? 'muted' : 'err')
+  } catch {
+    consoleLine('No se pudo contactar con el panel', 'err')
+  } finally {
+    btn.classList.remove('busy')
+  }
+})
+
+$('#console-input').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return
+  ev.preventDefault()
+  historyPos = Math.max(0, Math.min(consoleHistory.length, historyPos + (ev.key === 'ArrowUp' ? -1 : 1)))
+  ev.target.value = consoleHistory[historyPos] || ''
 })
 
 // ── Conexión en vivo ────────────────────────────────────────

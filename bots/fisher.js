@@ -6,7 +6,6 @@
 // ============================================================
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalBlock } } = require('mineflayer-pathfinder')
-const { loader: autoEat } = require('mineflayer-auto-eat')
 const cfg = require('../config')
 const stats = require('./stats')
 const {
@@ -17,6 +16,8 @@ const {
   equipBestTool,
   returnHomeAndDeposit,
   runPendingCommand,
+  getDepositableItems,
+  waitUntil,
   setIssue,
   clearIssue,
   isInventoryFull,
@@ -29,7 +30,6 @@ const {
 
 const ROD = 'fishing_rod'
 const FISH_TIMEOUT_MS = 45 * 1000   // Sin picada en este tiempo: el anzuelo cayó mal o no hay suerte, recoger y relanzar
-const MAX_FAILED_CASTS = 3          // Lanzamientos fallidos seguidos antes de buscar otro sitio
 const DEPOSIT_EVERY = 16            // Guardar en casa al acumular esta cantidad de capturas
 const MIN_OPEN_WATER = 9            // Bloques de agua (de 25 alrededor) para considerarla "agua abierta"
 const KEEP_AMOUNTS = { [ROD]: 1 }   // Se queda 1 caña; las de sobra van al cofre
@@ -42,7 +42,6 @@ function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('fisher'))
 
   bot.loadPlugin(pathfinder)
-  bot.loadPlugin(autoEat)
 
   setupBot(bot, 'Pescador', () => createBot(ctrl), 'fisher', ctrl)
 
@@ -55,7 +54,6 @@ function createBot(ctrl = {}) {
 }
 
 async function workLoop(bot) {
-  let failedCasts = 0
   let catches = 0
   let lastNoRodMsg = 0
   bot.depositRules = { keep: [], amounts: KEEP_AMOUNTS }
@@ -106,7 +104,6 @@ async function workLoop(bot) {
         }
         bot.fishingSpot.homeKey = homeKey
         console.log(`[Pescador] 🌊 Sitio de pesca: orilla ${fmtPos(bot.fishingSpot.stand)} → agua ${fmtPos(bot.fishingSpot.target)}`)
-        failedCasts = 0
       }
 
       // ── 4. Ir a la orilla ────────────────────────────────────
@@ -129,8 +126,9 @@ async function workLoop(bot) {
       const bite = await fishOnce(bot)
 
       if (bite) {
-        failedCasts = 0
-        await sleep(1500) // la captura vuela hacia el bot
+        // La captura vuela hacia el bot: esperar a que llegue (a veces tarda más de 1,5 s)
+        await waitUntil(() => diffInventory(before, inventoryCounts(bot)).length > 0, 3000)
+        await sleep(200)
         const after = inventoryCounts(bot)
         const caught = diffInventory(before, after)
         catches++
@@ -141,12 +139,8 @@ async function workLoop(bot) {
           // Lo que llega por /give o del cofre no es pesca: solo contar si llegó tras la picada
           if (gained > 0 && name !== ROD) stats.addDetail('pesca', name, gained)
         }
-      } else if (++failedCasts >= MAX_FAILED_CASTS) {
-        console.log('[Pescador] 🤔 Varios lanzamientos sin picada, pruebo otro sitio...')
-        markBad(bot, target)
-        bot.fishingSpot = null
-        failedCasts = 0
       }
+      // Sin picada: se vuelve a lanzar en el mismo sitio (los peces de un bloque de agua no se agotan)
 
       await sleep(500)
     } catch (err) {
@@ -216,8 +210,13 @@ function countOpenWater(bot, waterId, pos) {
 }
 
 // Orilla: bloque sólido (no agua) con 2 de aire encima, a 2-4 bloques del agua objetivo
+// Distancia (en bloques) entre la orilla y el punto de lanzamiento, en orden de preferencia. Lo pescado sale
+// disparado hacia el pescador con una fuerza proporcional a la distancia: lanzando a 2 bloques apenas se mueve,
+// vuelve a caer al agua y se queda flotando sin llegar al inventario.
+const CAST_DISTANCES = [5, 4, 6, 3]
+
 function findStandSpot(bot, waterId, water) {
-  for (let r = 2; r <= 4; r++) {
+  for (const r of CAST_DISTANCES) {
     for (let dx = -r; dx <= r; dx++) {
       for (let dz = -r; dz <= r; dz++) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue
@@ -225,7 +224,8 @@ function findStandSpot(bot, waterId, water) {
           const feet = water.offset(dx, dy, dz)
           const below = bot.blockAt(feet.offset(0, -1, 0))
           if (!below || below.boundingBox !== 'block' || below.type === waterId) continue
-          if (isAir(bot.blockAt(feet)) && isAir(bot.blockAt(feet.offset(0, 1, 0)))) return feet
+          if (!isAir(bot.blockAt(feet)) || !isAir(bot.blockAt(feet.offset(0, 1, 0)))) continue
+          if (clearLine(bot, feet.offset(0.5, 1.6, 0.5), water.offset(0.5, 1, 0.5))) return feet
         }
       }
     }
@@ -233,10 +233,20 @@ function findStandSpot(bot, waterId, water) {
   return null
 }
 
+// Nada sólido entre los ojos del pescador y el agua (si no, el anzuelo choca y cae donde no debe)
+function clearLine(bot, from, to) {
+  const steps = Math.ceil(from.distanceTo(to) * 4)
+  for (let i = 1; i < steps; i++) {
+    const p = from.plus(to.minus(from).scaled(i / steps))
+    const b = bot.blockAt(p.floored())
+    if (b && b.boundingBox === 'block') return false
+  }
+  return true
+}
+
+// Lo que guardaría al volver a casa (sin la caña ni la reserva de comida, que también puede ser pescado)
 function countCatch(bot) {
-  return bot.inventory.items()
-    .filter(i => i.name !== ROD)
-    .reduce((acc, i) => acc + i.count, 0)
+  return getDepositableItems(bot, [], KEEP_AMOUNTS).reduce((acc, i) => acc + i.count, 0)
 }
 
 function inventoryCounts(bot) {

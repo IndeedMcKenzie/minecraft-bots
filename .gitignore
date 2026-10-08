@@ -4,6 +4,9 @@ node_modules/
 # Datos de tu mundo: casas de los bots y almacén (coordenadas)
 data/
 
+# Plugin compilado (se genera con server-plugin/build.ps1)
+server-plugin/build/
+
 # Logs y perfiles
 *.log
 *.cpuprofile

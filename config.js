@@ -31,6 +31,13 @@ module.exports = {
     bluemapUrl: 'http://127.0.0.1:8100', // Pestaña 🗺️ Mapa (web de BlueMap). null = sin pestaña
   },
 
+  // Plugin BotHelper del servidor (server-plugin/): estado del servidor, almacén en vivo y consola en el panel.
+  // Si el plugin no está instalado, el panel funciona igual que sin él.
+  serverPlugin: {
+    url: 'http://127.0.0.1:8200',
+    tokenFile: 'C:/Server/plugins/BotHelper/token.txt', // la clave la crea el plugin al arrancar
+  },
+
   // Comportamientos globales
   reconnect: {
     enabled: true,
@@ -73,8 +80,11 @@ module.exports = {
   // Requiere que los bots tengan OP: ejecuta en consola del servidor:
   //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Ganadero
   //   op Bot_Artesano
+  // Se ejecutan cada vez que un bot aparece (también al reaparecer tras morir)
   starterCommands: [
     '/attribute {username} minecraft:scale base set 0.9999',
+    // Sin hambre: los bots no necesitan comer (saturación infinita, sin partículas)
+    '/effect give {username} minecraft:saturation infinite 0 true',
   ],
 
   // Rescate de bots atascados (los que tienen stuckWatch: true)

@@ -74,7 +74,7 @@ la interfaz en `http://127.0.0.1:3000`.
 - Estado (Activo / Conectando / Reconectando / Detenido), actividad actual y avisos en rojo.
 - ❤️ Vida, 🍗 hambre, 📍 posición, 🎒 huecos libres y 🏠 casa (con `N/15 cofres`).
 - **Inventario completo:** las fichas con 🔒 son la **reserva** que se queda a propósito al guardar
-  (herramienta, comida, semillas…). `cobblestone ×39 (🔒32)` significa que se queda 32 y guardará 7.
+  (herramienta, semillas…). `cobblestone ×39 (🔒32)` significa que se queda 32 y guardará 7.
 - `📦 N por guardar · último guardado hace X`.
 - **Alertas** (ver abajo); el borde de la tarjeta se pone amarillo o rojo si tiene alguna.
 
@@ -127,6 +127,40 @@ Puedes ver **«Esta sesión»** o **«Desde siempre»**:
 
 Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo para empezar de cero.
 
+### 🗺️ Pestaña Mapa
+Muestra la web de **BlueMap** dentro del panel (o abre `http://127.0.0.1:3000/#mapa`), y cada tarjeta de bot
+tiene un botón **🗺️ Ver en el mapa** que la abre centrada en el bot. Solo se carga mientras la pestaña está
+abierta. Se configura en `config.js` → `panel.bluemapUrl` (`null` = sin pestaña).
+
+### 🖥️ Pestaña Consola
+Necesita el plugin **BotHelper** (ver abajo). Ejecuta comandos del servidor como la consola (con todos los
+permisos) y muestra la respuesta; ↑/↓ repiten los anteriores. Cada comando queda en el registro del panel.
+
+## 🔌 Plugin del servidor: BotHelper
+
+Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del servidor:
+
+| | |
+|---|---|
+| ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor y **no cuentan para dormir** |
+| 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
+| 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan** |
+| 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola** |
+
+Solo escucha en el propio PC (`127.0.0.1:8200`) y pide una clave que genera al arrancar
+(`plugins/BotHelper/token.txt`, de donde la lee el panel). **Sin el plugin, el panel funciona igual que antes.**
+
+**Instalar** (requiere el JDK, que ya trae el Java del servidor; no hace falta Gradle ni Maven):
+```
+powershell -ExecutionPolicy Bypass -File server-plugin\build.ps1 -Install
+```
+Compila con las librerías del propio servidor (`C:\Server` por defecto; otra carpeta con `-ServerDir`), copia
+`BotHelper.jar` a `plugins/` y hay que **reiniciar el servidor**. Ajustes en `plugins/BotHelper/config.yml`
+(nombres de los bots, qué protecciones usar…) y `/bothelper` / `/bothelper reload` en el juego. En `config.js` →
+`serverPlugin` va la dirección del plugin y la ruta de `token.txt`.
+
+Los murciélagos y demás criaturas que ya existían no desaparecen solos: `kill @e[type=minecraft:bat]` en la consola.
+
 ---
 
 ## 🧠 Cómo trabajan los bots
@@ -144,8 +178,8 @@ Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo par
 
 | Bot | Reserva |
 |---|---|
-| Leñador | 1 hacha, 8 brotes de cada tipo, hasta 16 de cada comida |
-| Minero | 1 pico, 32 adoquines + 32 de pizarra profunda (para pilares de rescate), hasta 16 de cada comida |
+| Leñador | 1 hacha y 8 brotes de cada tipo |
+| Minero | 1 pico y 32 adoquines + 32 de pizarra profunda (para pilares de rescate) |
 | Granjero | 1 azada, 32 semillas de trigo, 16 zanahorias / patatas / semillas de remolacha |
 | Pescador | 1 caña |
 | Ganadero | 1 espada, 64 de trigo, vallas y tierra para reparar el corral |
@@ -269,6 +303,8 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
 
 ## 📌 Cosas a saber
 
+- **Sin hambre:** cada vez que un bot aparece (también al reaparecer tras morir) se da **Saturación** infinita
+  (`config.js` → `starterCommands`), así que nunca necesita comer. Con `keepInventory` activado, morir no le quita nada.
 - **OP y modo offline:** los bots necesitan OP para `/tp`, `/give`, `/summon` y las físicas. En modo offline,
   cualquiera que use el nombre de un bot hereda su OP. En servidores con más gente, usa un plugin de login
   (contraseña) o cambia los nombres de los bots en `config.js`.
@@ -292,6 +328,7 @@ abrir_panel.bat        Abre el panel en Windows (recomendado)
 panel.js               Gestor de los 7 bots + servidor del panel (127.0.0.1:3000)
 panel/index.html       Interfaz del panel
 panel/alerts.js        Alertas de los bots
+panel/serverlink.js    Conexión con el plugin BotHelper
 config.js              Toda la configuración
 bots/common.js         Lógica compartida: casa, viajes, cofres, rescate, órdenes del panel, /give, /tp
 bots/stats.js          Contadores de estadísticas
@@ -304,6 +341,7 @@ bots/organizer.js      Organizador
 bots/rancher.js        Ganadero
 bots/artisan.js        Artesano (hornos + herramientas)
 bots/warehouse.js      Acceso al almacén (lo usan el Artesano y los pedidos)
+server-plugin/         Plugin BotHelper para Paper (código y build.ps1)
 data/                  Datos de tu mundo (se crea solo, no se sube a git):
   home_<bot>.json        casa de cada bot
   almacen.json           categoría de cada cofre del organizador (respaldo de los carteles)
