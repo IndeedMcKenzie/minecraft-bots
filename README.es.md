@@ -2,7 +2,7 @@
 
 [English](README.md) · **Español**
 
-Siete bots hechos con **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) que trabajan solos
+Seis bots hechos con **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) que trabajan solos
 en un servidor Paper y se controlan desde un **panel web en una sola ventana**:
 
 | Bot | Usuario | Qué hace |
@@ -12,7 +12,6 @@ en un servidor Paper y se controlan desde un **panel web en una sola ventana**:
 | 🌾 Granjero | `Bot_Granjero` | Cosecha, replanta, siembra y amplía su granja junto al agua |
 | 🎣 Pescador | `Bot_Pescador` | Pesca sin parar en agua abierta cerca de su casa |
 | 🗂️ Organizador | `Bot_Organizador` | Recoge lo que guardan los demás y lo ordena en un almacén central con carteles |
-| 🐄 Ganadero | `Bot_Ganadero` | Construye un corral, cría vacas y sacrifica las sobrantes al pasar del máximo |
 | 🛠️ Artesano | `Bot_Artesano` | Funde minerales, cocina comida y fabrica herramientas de repuesto para los demás bots |
 
 **Destacado:** cada bot tiene casa y cofres propios y vuelve a guardar cuando se le llena el inventario ·
@@ -41,14 +40,13 @@ ViaVersion/ViaBackwards (los bots hablan el protocolo 1.21.4).
    op Bot_Granjero
    op Bot_Pescador
    op Bot_Organizador
-   op Bot_Ganadero
    op Bot_Artesano
    ```
 4. **Arranca el panel:** en Windows, doble clic en **`abrir_panel.bat`**. En cualquier sistema:
    `npm start` y abre `http://127.0.0.1:3000`.
 5. **Casas:** cada bot adopta como casa el cofre más cercano al aparecer. Para elegirla tú, hazle TP junto
    a un cofre y escribe `!casa <bot>` en el chat (o pulsa **🏠 Fijar casa** en el panel).
-   El **Organizador**, el **Ganadero** y el **Artesano** no adoptan ninguna: su casa (el almacén, el centro del corral o el taller) la eliges tú.
+   El **Organizador** y el **Artesano** no adoptan ninguna: su casa (el almacén o el taller) la eliges tú.
 
 > ⚠️ **Seguridad:** con el servidor en modo *offline*, cualquiera que entre con el nombre de un bot tendrá
 > sus permisos de OP. Úsalo en servidores privados o protege esos nombres (ver «Cosas a saber»).
@@ -57,7 +55,7 @@ ViaVersion/ViaBackwards (los bots hablan el protocolo 1.21.4).
 
 ## 🖥️ Panel de control
 
-`abrir_panel.bat` (o `npm start`) ejecuta los 7 bots en **un solo proceso** (`panel.js`, menos RAM) y abre
+`abrir_panel.bat` (o `npm start`) ejecuta los 6 bots en **un solo proceso** (`panel.js`, menos RAM) y abre
 la interfaz en `http://127.0.0.1:3000`.
 
 - **Desde otro equipo de tu red:** pon en `config.js` → `panel.host: '0.0.0.0'` y añade su IP a
@@ -136,6 +134,12 @@ abierta. Se configura en `config.js` → `panel.bluemapUrl` (`null` = sin pesta�
 Necesita el plugin **BotHelper** (ver abajo). Ejecuta comandos del servidor como la consola (con todos los
 permisos) y muestra la respuesta; ↑/↓ repiten los anteriores. Cada comando queda en el registro del panel.
 
+Debajo está **🔬 Diagnóstico**: al activarlo, el plugin apunta lo que el servidor ve que hacen los bots (clics en
+bloques, ventanas abiertas, clics de inventario, crafteos, objetos recogidos, pesca, teletransportes, daño) y se
+puede filtrar por bot. Sirve para investigar fallos del tipo "el bot dice que guardó pero no guardó": si una
+acción no aparece aquí, el servidor no la recibió. Solo en memoria (los últimos 3.000 sucesos); también se activa
+con `/bothelper debug on` / `off`. Lo cancelado por el servidor sale en rojo.
+
 ## 🔌 Plugin del servidor: BotHelper
 
 Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del servidor:
@@ -145,7 +149,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor y **no cuentan para dormir** |
 | 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
 | 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan** |
-| 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola** |
+| 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola**; **registro de diagnóstico** de lo que hacen los bots |
 
 Solo escucha en el propio PC (`127.0.0.1:8200`) y pide una clave que genera al arrancar
 (`plugins/BotHelper/token.txt`, de donde la lee el panel). **Sin el plugin, el panel funciona igual que antes.**
@@ -182,7 +186,6 @@ Los murciélagos y demás criaturas que ya existían no desaparecen solos: `kill
 | Minero | 1 pico y 32 adoquines + 32 de pizarra profunda (para pilares de rescate) |
 | Granjero | 1 azada, 32 semillas de trigo, 16 zanahorias / patatas / semillas de remolacha |
 | Pescador | 1 caña |
-| Ganadero | 1 espada, 64 de trigo, vallas y tierra para reparar el corral |
 
 ### 🪓 Leñador
 - Busca la base de un árbol (radio 96), lo tala de abajo arriba y replanta el brote.
@@ -218,7 +221,7 @@ Los murciélagos y demás criaturas que ya existían no desaparecen solos: `kill
   4. Si una categoría no tiene cofre o está llena, **coloca uno nuevo con un cartel encima** con su nombre.
 - Los cofres van **en cuadrícula con pasillos** y nunca pegados (así no se unen en cofres dobles mezclando categorías).
 - **Almacén ilimitado** (`maxChests: 0`): cuando no queda hueco, la cuadrícula **crece en anillos** hasta
-  `maxWarehouseRadius` (112 bloques). Nunca pone cofres junto a las casas de otros bots ni en el corral.
+  `maxWarehouseRadius` (112 bloques). Nunca pone cofres junto a las casas de otros bots.
   Si una categoría no cabe, deja esos objetos en las casas y sigue con el resto.
 - Si el servidor rechaza un depósito (pasa con objetos que ViaVersion marca, como huevos), lo reintenta en huecos vacíos.
 - **Categorías:** Madera, Minerales, Piedra, Cultivos, Pesca, Comida, Mobs y Varios (todo lo demás).
@@ -228,25 +231,11 @@ Los murciélagos y demás criaturas que ya existían no desaparecen solos: `kill
 - **Buzón (opcional, apagado):** con `organizer.inbox: true`, el cofre de su casa se vacía y ordena en cada
   ronda (útil para dejarle cosas). ¡Si ese cofre tiene cosas tuyas, las moverá!
 
-### 🐄 Ganadero (vacas)
-- Su casa es un cofre en el **centro del corral**: pon el cofre en un sitio **llano de al menos 13×13**,
-  hazle TP al lado y usa `!casa ganadero`.
-- **Construye el corral** solo: un cuadrado de vallas a 6 bloques del cofre, con una **puerta en el lado sur**
-  para que entres tú. En terreno irregular **nivela con tierra** para que las vacas no salten las vallas.
-  Repara huecos cada 5 minutos y, si le cambias la casa, retira el corral anterior.
-- Si hay menos de 2 vacas adultas, **invoca las que falten con `/summon`** (solo con el corral cerrado).
-- **Cría**: alimenta con trigo a parejas de adultas (cada vaca, una vez cada 5 min) sin pasarse del máximo.
-  Las crías tardan unos 20 min en crecer.
-- **Sacrifica solo si hay más de 10** vacas (adultas + crías): mata adultas sobrantes con espada, dejando
-  siempre al menos 2, y guarda carne y cuero en su cofre (el organizador lo lleva al almacén).
-- Vallas, tierra, trigo y espada los consigue con `/give` si le faltan. Se ajusta en `config.js` → `rancher`.
-- ⚠️ Plugins que apilan mobs (p. ej. **StackMob**) hacen que cuente mal las vacas y críe o sacrifique de más.
-
 ### 🛠️ Artesano (taller: hornos + herramientas)
 - Su casa es un cofre en el **taller, cerca del almacén** (fuera de su cuadrícula), con unos 7 bloques llanos
   libres al norte para los hornos y algo de sitio a los lados para la mesa de trabajo: `!casa artesano`.
 - **Herramientas (primero):** cada 10 min revisa que cada bot tenga **1 herramienta de repuesto** en su casa:
-  hacha (leñador), pico (minero), azada (granjero), caña (pescador) y espada (ganadero). Si falta alguna,
+  hacha (leñador), pico (minero), azada (granjero), y caña (pescador). Si falta alguna,
   saca materiales del almacén (**diamante**; si no hay, hierro o piedra; palos o madera para hacerlos; cuerda
   para las cañas), la **fabrica en una mesa de trabajo** y **la deja en el cofre de ese bot** con `/tp`.
 - **Hornos:** coloca **4 hornos** junto a su cofre. Cuando hay hornos libres, saca del almacén **hierro, oro y
@@ -273,8 +262,8 @@ Los murciélagos y demás criaturas que ya existían no desaparecen solos: `kill
 | `!casa <bot>` | Ese bot adopta como casa el cofre más cercano a él (≤ 8 bloques) |
 | `!casa todos` | Lo mismo para todos los bots (cada uno busca cerca de sí mismo) |
 
-`<bot>` puede ser el rol (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`, `ganadero`, `artesano`),
-la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
+`<bot>` puede ser el rol (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`, `artesano`),
+la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 
 ---
 
@@ -293,7 +282,6 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (ilimitado), `inbox`, `protect`, `categories` |
 | `fishing` | `searchRadius` 32 |
-| `rancher` | `penRadius` 6, `maxCows` 10, `minBreeders` 2, `breedCooldownMinutes` 5, `cycleSeconds` 15 |
 | `smelter` (Artesano, hornos) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (qué funde/cocina), `fuels` |
 | `smith` (Artesano, herramientas) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (herramienta de cada bot), `tiers` (diamante > hierro > piedra) |
 | `starterCommands` | Comandos al conectarse (ajuste de escala para las físicas de salto en 1.21+, requiere OP) |
@@ -310,12 +298,11 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
   (contraseña) o cambia los nombres de los bots en `config.js`.
 - **No ejecutes un bot suelto** (`node bots/<bot>.js`) con el panel abierto: entrarían dos con el mismo nombre
   y se expulsarían entre sí en bucle.
-- **Recursos:** con los 7 bots, el proceso usa unos **500–550 MB de RAM** y en torno a **medio núcleo de CPU**
+- **Recursos:** con los 6 bots, el proceso usa unos **500–550 MB de RAM** y en torno a **medio núcleo de CPU**
   cuando todos están activos. Lo que más gasta es el cálculo de rutas (`performance.pathfinderTickMs`).
-  Cada animal del corral también es trabajo para el servidor: no subas mucho `rancher.maxCows`.
-- **Si un bot muere**, pierde lo que llevaba y reaparece en el spawn o en su cama; luego vuelve a trabajar.
+- **Si un bot muere**, reaparece en el spawn o en su cama y vuelve a trabajar (con `keepInventory` no pierde nada).
 - **Cambiar la casa de un bot:** `!casa <bot>` / 🏠 Fijar casa, o borrar `data/home_<bot>.json`.
-- **Cofre de casa roto:** el bot olvida esa casa y adopta otra (excepto organizador y ganadero).
+- **Cofre de casa roto:** el bot olvida esa casa y adopta otra (excepto organizador y artesano).
 - **Avisos en rojo** en el registro: la mayoría se explican solos («¿Es OP?», «cofres llenos», «no llego al
   cofre…»). Si un bot hace algo raro, el registro filtrado por ese bot suele decir por qué.
 
@@ -325,7 +312,7 @@ la clave (`miner`, `woodcutter`, `rancher`…) o el usuario (`Bot_Minero`).
 
 ```
 abrir_panel.bat        Abre el panel en Windows (recomendado)
-panel.js               Gestor de los 7 bots + servidor del panel (127.0.0.1:3000)
+panel.js               Gestor de los 6 bots + servidor del panel (127.0.0.1:3000)
 panel/index.html       Interfaz del panel
 panel/alerts.js        Alertas de los bots
 panel/serverlink.js    Conexión con el plugin BotHelper
@@ -338,14 +325,12 @@ bots/miner.js          Minero
 bots/farmer.js         Granjero
 bots/fisher.js         Pescador
 bots/organizer.js      Organizador
-bots/rancher.js        Ganadero
 bots/artisan.js        Artesano (hornos + herramientas)
 bots/warehouse.js      Acceso al almacén (lo usan el Artesano y los pedidos)
 server-plugin/         Plugin BotHelper para Paper (código y build.ps1)
 data/                  Datos de tu mundo (se crea solo, no se sube a git):
   home_<bot>.json        casa de cada bot
   almacen.json           categoría de cada cofre del organizador (respaldo de los carteles)
-  corral.json            corrales construidos por el ganadero
   stats.json             estadísticas acumuladas
   almacen_inventario.json  contenido de cada cofre del almacén
 ```

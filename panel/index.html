@@ -455,6 +455,17 @@
       <input id="console-input" placeholder="Comando…  (↑ / ↓ para repetir los anteriores)" aria-label="Comando del servidor" maxlength="500">
       <button class="primary" type="submit">Ejecutar</button>
     </form>
+    <section class="panel-card">
+      <div class="wh-head">
+        <span class="card-title" style="margin:0">🔬 Diagnóstico <span class="muted">· lo que el servidor ve que hacen los bots</span></span>
+        <button id="dbg-toggle">Activar</button>
+        <label class="meta">Bot <select id="dbg-player"><option value="">Todos</option></select></label>
+        <button id="dbg-clear">Limpiar</button>
+        <span class="meta" id="dbg-status"></span>
+      </div>
+      <pre class="console-out" id="dbg-out" style="min-height:180px;max-height:420px;margin-top:10px"><span class="muted">Actívalo cuando algo falle: registra clics en bloques, ventanas, clics de inventario, crafteos, recogidas, pesca, teletransportes y daño de los bots. Solo en memoria (los últimos 3.000 sucesos).</span>
+</pre>
+    </section>
   </main>
 
   <main id="view-map" class="map-view" hidden>
@@ -473,7 +484,6 @@
         <button class="tab" data-filter="farmer">🌾 Granjero</button>
         <button class="tab" data-filter="fisher">🎣 Pescador</button>
         <button class="tab" data-filter="organizer">🗂️ Organizador</button>
-        <button class="tab" data-filter="rancher">🐄 Ganadero</button>
         <button class="tab" data-filter="artisan">🛠️ Artesano</button>
         <button class="tab" data-filter="panel">Panel</button>
       </div>
@@ -681,6 +691,7 @@ function renderItems(container, items) {
 
 function renderState(state) {
   lastState = state
+  fillDebugPlayers(state.bots)
   // Desde otro equipo, "127.0.0.1" sería ese equipo: usar la misma dirección con la que se abrió el panel
   const map = state.map && state.map.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/, `//${location.hostname}`)
   if (map !== mapUrl) {
@@ -821,6 +832,8 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     $('#view-map').hidden = currentView !== 'map'
     $('#view-console').hidden = currentView !== 'console'
     if (currentView === 'console') setTimeout(() => $('#console-input').focus(), 0)
+    clearInterval(dbgTimer)
+    if (currentView === 'console') { pollDebug(); dbgTimer = setInterval(pollDebug, 3000) }
     // El mapa 3D solo se carga mientras se ve (usa la gráfica del navegador)
     const frame = $('#map-frame')
     if (currentView === 'map' && mapUrl) {
@@ -898,7 +911,6 @@ function renderStats() {
     { label: '⛏️ Minerales extraídos', value: get('miner', 'minerales'), sub: `💎 ${fmtNum((det.minerales || {}).diamond)} diamantes` },
     { label: '🌾 Cultivos cosechados', value: get('farmer', 'cosechas'), sub: `${fmtNum(get('farmer', 'siembras'))} sembrados` },
     { label: '🎣 Capturas de pesca', value: get('fisher', 'capturas') },
-    { label: '🐄 Terneros nacidos', value: get('rancher', 'terneros'), sub: `${fmtNum(get('rancher', 'sacrificadas'))} sacrificadas` },
     // El Artesano sustituye al Fundidor y al Herrero: se suman también sus cifras anteriores
     { label: '🔥 Fundidos y cocinados', value: get('artisan', 'producidos') + get('smelter', 'producidos') },
     { label: '🔨 Herramientas fabricadas', value: get('artisan', 'herramientas') + get('smith', 'herramientas'), sub: `${fmtNum(get('artisan', 'entregas') + get('smith', 'entregas'))} entregadas` },
@@ -1316,6 +1328,55 @@ $('#console-input').addEventListener('keydown', (ev) => {
   historyPos = Math.max(0, Math.min(consoleHistory.length, historyPos + (ev.key === 'ArrowUp' ? -1 : 1)))
   ev.target.value = consoleHistory[historyPos] || ''
 })
+
+// ── Diagnóstico (plugin BotHelper) ──────────────────────────
+let dbgSince = 0
+let dbgEnabled = false
+let dbgTimer = null
+
+function dbgLine(e) {
+  const out = $('#dbg-out')
+  const stick = out.scrollHeight - out.scrollTop - out.clientHeight < 40
+  const span = document.createElement('span')
+  const extra = Object.entries(e).filter(([k, v]) => !['t', 'player', 'type'].includes(k) && v !== null && v !== false && v !== 'DEFAULT')
+    .map(([k, v]) => `${k}=${v}`).join(' ')
+  span.className = /cancelled=true|DENY/.test(extra) ? 'err' : ''
+  span.textContent = `${fmtTime(e.t)}  ${e.player.padEnd(16)} ${e.type.padEnd(9)} ${extra}\n`
+  out.appendChild(span)
+  while (out.childElementCount > 1500) out.firstElementChild.remove()
+  if (stick) out.scrollTop = out.scrollHeight
+}
+
+async function pollDebug() {
+  try {
+    const player = $('#dbg-player').value
+    const res = await fetch(`/api/debug?since=${dbgSince}&limit=500${player ? '&player=' + encodeURIComponent(player) : ''}`, { cache: 'no-store' })
+    const d = await res.json()
+    if (!res.ok || d.ok === false) { $('#dbg-status').textContent = d.error || ''; return }
+    dbgEnabled = d.enabled
+    $('#dbg-toggle').textContent = dbgEnabled ? '⏸ Desactivar' : '▶ Activar'
+    $('#dbg-status').textContent = dbgEnabled ? '🔴 registrando' : 'apagado'
+    for (const e of d.events) { dbgLine(e); dbgSince = Math.max(dbgSince, e.t) }
+  } catch {}
+}
+
+$('#dbg-toggle').addEventListener('click', async () => {
+  await postJson('/api/debug', { enable: !dbgEnabled })
+  pollDebug()
+})
+$('#dbg-clear').addEventListener('click', () => { $('#dbg-out').replaceChildren() })
+$('#dbg-player').addEventListener('change', () => { dbgSince = 0; $('#dbg-out').replaceChildren(); pollDebug() })
+
+function fillDebugPlayers(bots) {
+  const sel = $('#dbg-player')
+  if (sel.childElementCount > 1) return
+  for (const b of bots) {
+    const o = document.createElement('option')
+    o.value = b.username
+    o.textContent = `${b.emoji} ${b.label}`
+    sel.appendChild(o)
+  }
+}
 
 // ── Conexión en vivo ────────────────────────────────────────
 let shutDown = false

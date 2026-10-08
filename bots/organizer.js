@@ -378,7 +378,7 @@ function sourceHomes(bot) {
     // taller del fundidor y el herrero) sí se recogen: collectFrom no toca los cofres del almacén.
     if (v.distanceTo(bot.home) < 2) continue
     if (homes.some(h => h.pos.distanceTo(v) < 1)) continue
-    const label = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', rancher: 'Ganadero', artisan: 'Artesano' }[key] || key
+    const label = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', artisan: 'Artesano' }[key] || key
     homes.push({ key, label, pos: v })
   }
   return homes
@@ -766,13 +766,9 @@ function findWarehouseSpots(bot, sameCategoryChests, usable = () => true) {
   return []
 }
 
-// Zonas donde no se ponen cofres: casas de otros bots (si no, las usarían como suyas) y el corral
+// Zonas donde no se ponen cofres: casas de otros bots (si no, las usarían como suyas)
 function forbiddenZones(bot) {
   const zones = sourceHomes(bot).map(h => ({ pos: h.pos, r: SOURCE_CHEST_RADIUS + 2 }))
-  try {
-    const r = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'home_rancher.json'), 'utf8'))
-    zones.push({ pos: new Vec3(r.x, r.y, r.z), r: ((cfg.rancher && cfg.rancher.penRadius) || 6) + 3, square: true })
-  } catch {}
   return zones
 }
 

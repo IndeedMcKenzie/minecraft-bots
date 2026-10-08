@@ -41,12 +41,15 @@ public final class BotHelper extends JavaPlugin implements Listener {
     private String prefix = "";
     private boolean noMobSpawning, ignoreSleep, noMonsterDamage, noFallDamage, noMonsterTarget, deliverCatch;
     private PanelApi api;
+    private DebugLog debug;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         loadSettings();
         getServer().getPluginManager().registerEvents(this, this);
+        debug = new DebugLog(this, getConfig().getBoolean("debug.enabled", false));
+        getServer().getPluginManager().registerEvents(debug, this);
         startApi();
     }
 
@@ -95,6 +98,10 @@ public final class BotHelper extends JavaPlugin implements Listener {
     private void stopApi() {
         if (api != null) api.stop();
         api = null;
+    }
+
+    DebugLog debug() {
+        return debug;
     }
 
     public boolean isBot(Player p) {
@@ -164,6 +171,12 @@ public final class BotHelper extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length > 1 && args[0].equalsIgnoreCase("debug")) {
+            boolean on = args[1].equalsIgnoreCase("on");
+            debug.setEnabled(on);
+            sender.sendMessage("BotHelper: registro de diagnóstico " + (on ? "activado" : "desactivado") + ".");
+            return true;
+        }
         if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
             stopApi();
             loadSettings();
@@ -174,7 +187,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
         long online = Bukkit.getOnlinePlayers().stream().filter(this::isBot).count();
         sender.sendMessage("BotHelper: " + online + " bots conectados · sin spawns " + onOff(noMobSpawning)
             + " · ignoran el sueño " + onOff(ignoreSleep) + " · protección " + onOff(noMonsterDamage || noFallDamage)
-            + " · panel " + (api != null ? "conectado" : "apagado"));
+            + " · panel " + (api != null ? "conectado" : "apagado") + " · diagnóstico " + onOff(debug.isEnabled()));
         return true;
     }
 

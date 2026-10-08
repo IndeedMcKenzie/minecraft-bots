@@ -78,7 +78,7 @@ module.exports = {
 
   // Fix de física de salto en Minecraft 1.21+ (bug conocido de mineflayer)
   // Requiere que los bots tengan OP: ejecuta en consola del servidor:
-  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Ganadero
+  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador
   //   op Bot_Artesano
   // Se ejecutan cada vez que un bot aparece (también al reaparecer tras morir)
   starterCommands: [
@@ -123,15 +123,6 @@ module.exports = {
     },
   },
 
-  // Ganadero: construye un corral de vallas alrededor de su casa y cría vacas dentro
-  rancher: {
-    penRadius: 6,          // Vallas a esta distancia del cofre de casa (interior de 11x11)
-    maxCows: 10,           // Máximo de vacas (adultas + crías). Si se supera, sacrifica adultas sobrantes
-    minBreeders: 2,        // Adultas que nunca sacrifica (para seguir criando)
-    breedCooldownMinutes: 5, // Tiempo que una vaca tarda en poder volver a criar
-    cycleSeconds: 15,      // Cada cuánto revisa el corral
-  },
-
   // Artesano · hornos: fila de hornos junto a su casa (taller); materiales y combustible del almacén
   smelter: {
     furnaces: 4,           // Hornos que coloca junto a su casa
@@ -147,7 +138,7 @@ module.exports = {
     checkMinutes: 10,      // Cada cuánto revisa los repuestos
     sparesPerBot: 1,       // Herramientas de repuesto que debe haber en la casa de cada bot
     // Qué herramienta necesita cada bot
-    tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod', rancher: 'sword' },
+    tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod' },
     tiers: ['diamond', 'iron', 'stone'], // material preferido (si no hay, el siguiente)
   },
 
@@ -166,6 +157,5 @@ module.exports = {
     fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 'tiny' }, // no explora: carga menos chunks
     organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, pathfinderTickMs: 40 }, // su casa es el almacén central (la eliges tú)
     artisan:    { username: 'Bot_Artesano', home: null, autoHome: false, viewDistance: 'tiny' }, // funde, cocina y fabrica herramientas; su casa es el taller (la eliges tú)
-    rancher:    { username: 'Bot_Ganadero', home: null, autoHome: false, viewDistance: 'tiny', give: [{ item: 'wheat', count: 64 }, { item: 'diamond_sword', count: 1 }] }, // su casa es el centro del corral (la eliges tú)
   },
 }

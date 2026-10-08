@@ -48,7 +48,7 @@ const sCfg = Object.assign({
 const smCfg = Object.assign({
   checkMinutes: 10,
   sparesPerBot: 1,
-  tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod', rancher: 'sword' },
+  tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod' },
   tiers: ['diamond', 'iron', 'stone'],
 }, cfg.smith)
 
@@ -61,7 +61,7 @@ const isInput = name => sCfg.smelt.includes(name)
 const fuelValue = name => (name === 'coal' || name === 'charcoal') ? 8 : 1.5
 
 const HOME_CHEST_RADIUS = (cfg.home && cfg.home.chestRadius) || 6
-const LABELS = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', rancher: 'Ganadero', organizer: 'Organizador' }
+const LABELS = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', organizer: 'Organizador' }
 
 // Material por nivel (nombres de objeto) y categoría del almacén donde buscarlo
 const TIER_MATERIAL = {
@@ -71,6 +71,8 @@ const TIER_MATERIAL = {
 }
 // Material y palos que lleva cada herramienta
 const RECIPE_NEEDS = { pickaxe: { mat: 3, sticks: 2 }, axe: { mat: 3, sticks: 2 }, hoe: { mat: 2, sticks: 2 }, sword: { mat: 2, sticks: 1 }, shovel: { mat: 1, sticks: 2 } }
+
+const CRAFT_ATTEMPTS = 3 // intentos de crafteo antes de recurrir a /give
 
 const isToolOf = family => name => family === 'fishing_rod' ? name === 'fishing_rod' : name.endsWith(`_${family}`)
 const countOf = (bot, test) => bot.inventory.items().filter(i => test(i.name)).reduce((a, i) => a + i.count, 0)
@@ -408,14 +410,21 @@ async function countSpares(bot, home, family) {
   const chests = bot.findBlocks({ matching: chestIds(bot), point: home, maxDistance: HOME_CHEST_RADIUS, count: 32 })
     .map(p => bot.blockAt(p)).filter(Boolean)
   let total = 0
+  let unread = 0
   for (const chest of chests) {
     try {
       const c = await openContainer(bot, chest)
-      if (!c) continue
+      if (!c) { unread++; continue }
       total += c.containerItems().filter(i => isToolOf(family)(i.name)).length
       try { c.close() } catch {}
       await sleep(250)
-    } catch {}
+    } catch { unread++ }
+  }
+  // Si algún cofre no se pudo abrir (a veces el servidor no responde) no se sabe cuántos hay: mejor no
+  // fabricar de más y volver a mirar en la próxima revisión
+  if (total < smCfg.sparesPerBot && unread > 0) {
+    console.warn(`[Artesano] No pude abrir ${unread} cofre(s) en ${fmtPos(home)}; lo reviso en la próxima vuelta.`)
+    return null
   }
   return total
 }
@@ -457,12 +466,21 @@ async function craftTool(bot, family) {
   const before = countOf(bot, n => n === itemName)
   const invText = () => bot.inventory.items().map(i => `${i.name}×${i.count}`).join(', ') || 'vacío'
   const invBefore = invText()
-  if (!await craft(bot, itemName, table)) return null
-  // El servidor puede tardar en confirmar el resultado
-  if (countOf(bot, n => n === itemName) <= before) await waitUntil(() => countOf(bot, n => n === itemName) > before, 2500)
-  if (countOf(bot, n => n === itemName) <= before) {
-    console.warn(`${TAG} El crafteo de ${itemName.replace(/_/g, ' ')} no dio resultado (no apareció en el inventario). Antes: ${invBefore} · después: ${invText()}`)
-    return null
+  const made = () => countOf(bot, n => n === itemName) > before
+  // A veces el servidor rechaza en silencio los clics en la mesa (objetos del almacén con datos ocultos de
+  // ViaVersion): no se gasta nada y no sale nada. Se reintenta; si sigue igual, se da la herramienta con /give.
+  for (let attempt = 1; attempt <= CRAFT_ATTEMPTS && !made(); attempt++) {
+    if (!await craft(bot, itemName, table)) return null
+    await waitUntil(made, 2500) // el servidor puede tardar en confirmar el resultado
+    if (!made() && attempt < CRAFT_ATTEMPTS) {
+      console.warn(`${TAG} El crafteo de ${itemName.replace(/_/g, ' ')} no dio resultado (antes: ${invBefore} · después: ${invText()}); reintento ${attempt}/${CRAFT_ATTEMPTS - 1}...`)
+      await sleep(1500)
+    }
+  }
+  if (!made()) {
+    console.warn(`${TAG} El servidor no acepta el crafteo de ${itemName.replace(/_/g, ' ')}: me lo doy con /give para que no falte el repuesto.`)
+    if (!await giveSelf(bot, itemName, countOf(bot, n => n === itemName) + 1)) return null
+    stats.add('artisan', 'herramientasGive')
   }
   console.log(`${TAG} 🔨 Fabricado: ${itemName.replace(/_/g, ' ')}.`)
   stats.add('artisan', 'herramientas')
@@ -560,7 +578,8 @@ async function deliverTool(bot, itemName, need) {
       if (!c) continue
       try { await depositNoMerge(bot, c, tool.id, 1) } catch {}
       try { c.close() } catch {}
-      await sleep(1200) // tiempo para que el servidor confirme
+      // Esperar a que el servidor confirme (con el servidor cargado puede tardar más de un segundo)
+      await waitUntil(() => countOf(bot, n => n === itemName) < before, 4000)
     } catch { continue }
     if (countOf(bot, n => n === itemName) < before) {
       console.log(`${TAG} 📦 Entregado ${itemName.replace(/_/g, ' ')} en casa de ${label} ${fmtPos(chest.position)}.`)

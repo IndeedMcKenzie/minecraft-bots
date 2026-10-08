@@ -2,7 +2,7 @@
 
 **English** · [Español](README.es.md)
 
-Seven bots built with **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) that work on their own
+Six bots built with **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) that work on their own
 on a Paper server and are controlled from a **single-window web panel**:
 
 | Bot | Username | What it does |
@@ -12,7 +12,6 @@ on a Paper server and are controlled from a **single-window web panel**:
 | 🌾 Farmer | `Bot_Granjero` | Harvests, replants, sows and expands its farm next to water |
 | 🎣 Fisher | `Bot_Pescador` | Fishes non-stop in open water near its home |
 | 🗂️ Organizer | `Bot_Organizador` | Collects what the others store and sorts it into a central warehouse with labeled chests |
-| 🐄 Rancher | `Bot_Ganadero` | Builds a fenced pen, breeds cows and culls the surplus above a cap |
 | 🛠️ Artisan | `Bot_Artesano` | Smelts ores, cooks food and crafts spare tools for the other bots |
 
 **Highlights:** every bot has its own home and chests and returns to store items when its inventory fills
@@ -44,15 +43,14 @@ the 1.21.4 protocol).
    op Bot_Granjero
    op Bot_Pescador
    op Bot_Organizador
-   op Bot_Ganadero
    op Bot_Artesano
    ```
 4. **Start the panel:** on Windows, double-click **`abrir_panel.bat`**. On any OS: `npm start` and open
    `http://127.0.0.1:3000`.
 5. **Homes:** each bot adopts the nearest chest as its home when it spawns. To choose it yourself, teleport the
    bot next to a chest and type `!casa <bot>` in chat (or press **🏠 Fijar casa** in the panel).
-   The **Organizer** and the **Rancher** never pick one on their own: you choose their home (the warehouse /
-   the center of the pen).
+   The **Organizer** and the **Artisan** never pick one on their own: you choose their home (the warehouse /
+   the workshop).
 
 > ⚠️ **Security:** in *offline* mode, anyone who joins with a bot's name gets its OP permissions. Use this on
 > private servers or protect those names (see "Good to know").
@@ -61,7 +59,7 @@ the 1.21.4 protocol).
 
 ## 🖥️ Control panel
 
-`abrir_panel.bat` (or `npm start`) runs all 7 bots in **a single process** (`panel.js`, less RAM) and serves the
+`abrir_panel.bat` (or `npm start`) runs all 6 bots in **a single process** (`panel.js`, less RAM) and serves the
 UI at `http://127.0.0.1:3000`.
 
 - **From another computer on your network:** set `panel.host: '0.0.0.0'` in `config.js` and add its IP to
@@ -139,6 +137,12 @@ Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#
 Needs the **BotHelper** plugin (below). Runs server commands as the console (full permissions) and shows the
 reply; ↑/↓ recall previous ones. Every command is written to the panel log.
 
+Below it is **🔬 Diagnóstico**: when enabled, the plugin records what the server sees the bots doing (block
+clicks, opened windows, inventory clicks, crafting, item pickups, fishing, teleports, damage), filterable per bot.
+It's for bugs like "the bot says it stored items but it didn't": if an action doesn't show up here, the server
+never received it. Memory only (last 3,000 events); also toggled with `/bothelper debug on` / `off`. Anything the
+server cancelled is shown in red.
+
 ## 🔌 Server plugin: BotHelper
 
 A Paper plugin (`server-plugin/` folder) that helps the bots from inside the server:
@@ -148,7 +152,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 | ⚡ Performance | Bots **don't spawn mobs** around them and **don't count for sleeping** |
 | 🎣 Fishing | Whatever a bot catches **appears at its feet** instead of flying towards it (from some shores it hit the edge, fell into the water and was lost) |
 | 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out** |
-| 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console** |
+| 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console**; **diagnostic log** of what the bots do |
 
 It only listens on this PC (`127.0.0.1:8200`) and requires a key it creates on startup
 (`plugins/BotHelper/token.txt`, which the panel reads). **Without the plugin the panel works as before.**
@@ -185,7 +189,6 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
 | Miner | 1 pickaxe and 32 cobblestone + 32 cobbled deepslate (for rescue pillars) |
 | Farmer | 1 hoe, 32 wheat seeds, 16 carrots / potatoes / beetroot seeds |
 | Fisher | 1 fishing rod |
-| Rancher | 1 sword, 64 wheat, fences and dirt to repair the pen |
 
 ### 🪓 Woodcutter
 - Finds the base of a tree (radius 96), chops it bottom-up and replants the sapling.
@@ -221,7 +224,7 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
   4. If a category has no chest or it's full, it **places a new chest with a sign on top** naming the category.
 - Chests are laid out **on a grid with aisles** and never touch (so they don't merge into double chests mixing categories).
 - **Unlimited warehouse** (`maxChests: 0`): when it runs out of room, the grid **grows in rings** up to
-  `maxWarehouseRadius` (112 blocks). It never places chests next to other bots' homes or inside the pen.
+  `maxWarehouseRadius` (112 blocks). It never places chests next to other bots' homes.
   If a category doesn't fit, those items stay in the bots' homes and the rest keeps being sorted.
 - If the server rejects a deposit (happens with items ViaVersion tags, like eggs), it retries into empty slots.
 - **Categories:** Madera (wood), Minerales (ores), Piedra (stone), Cultivos (crops), Pesca (fish),
@@ -232,24 +235,11 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
 - **Inbox (optional, off):** with `organizer.inbox: true`, its home chest is emptied and sorted every round
   (handy for dropping things off). If that chest holds your stuff, it will be moved!
 
-### 🐄 Rancher (cows)
-- Its home is a chest in the **center of the pen**: place the chest on **flat ground of at least 13×13**,
-  teleport the bot next to it and use `!casa ganadero`.
-- **Builds the pen** by itself: a square of fences 6 blocks from the chest with a **gate on the south side**
-  for you. On uneven ground it **levels with dirt** so cows can't hop over the fence. It repairs gaps every
-  5 minutes and, if you move its home, removes the old pen.
-- With fewer than 2 adult cows it **`/summon`s the missing ones** (only once the pen is closed).
-- **Breeds** pairs of adults with wheat (each cow once every 5 min) without exceeding the cap. Calves take ~20 min to grow.
-- **Culls only above 10 cows** (adults + calves): it kills surplus adults with a sword, always keeping at least
-  2, and stores the beef and leather (the organizer takes them to the warehouse).
-- Fences, dirt, wheat and sword come from `/give` when missing. Tune it in `config.js` → `rancher`.
-- ⚠️ Mob-stacking plugins (e.g. **StackMob**) make it miscount the cows and breed or cull too many.
-
 ### 🛠️ Artisan (workshop: furnaces + tools)
 - Its home is a chest in the **workshop, near the warehouse** (outside its grid), with ~7 flat free blocks to
   the north for the furnaces and some room on the sides for the crafting table: `!casa artesano`.
 - **Tools (first):** every 10 min it checks that each bot has **1 spare tool** at home: axe (woodcutter),
-  pickaxe (miner), hoe (farmer), fishing rod (fisher) and sword (rancher). If one is missing it takes materials
+  pickaxe (miner), hoe (farmer), and fishing rod (fisher). If one is missing it takes materials
   from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods),
   **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`.
 - **Furnaces:** places **4 furnaces** next to its chest. When furnaces are free it takes **raw iron, gold and
@@ -277,7 +267,7 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
 | `!casa todos` | Same for every bot (each looks near itself) |
 
 `<bot>` can be the Spanish role name (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`,
-`ganadero`, `artesano`), the key (`miner`, `woodcutter`, `farmer`, `fisher`, `organizer`, `rancher`, `artisan`) or the username (`Bot_Minero`).
+`artesano`), the key (`miner`, `woodcutter`, `farmer`, `fisher`, `organizer`, `artisan`) or the username (`Bot_Minero`).
 
 ---
 
@@ -296,7 +286,6 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (unlimited), `inbox`, `protect`, `categories` |
 | `fishing` | `searchRadius` 32 |
-| `rancher` | `penRadius` 6, `maxCows` 10, `minBreeders` 2, `breedCooldownMinutes` 5, `cycleSeconds` 15 |
 | `smelter` (Artisan, furnaces) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (what to smelt/cook), `fuels` |
 | `smith` (Artisan, tools) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (each bot's tool), `tiers` (diamond > iron > stone) |
 | `starterCommands` | Commands run on join (scale tweak for 1.21+ jump physics, needs OP) |
@@ -313,12 +302,11 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
   bot usernames in `config.js`.
 - **Don't run a bot on its own** (`node bots/<bot>.js`) while the panel is running: both would log in with the
   same name and kick each other in a loop.
-- **Resources:** with all 7 bots the process uses about **500–550 MB of RAM** and around **half a CPU core**
+- **Resources:** with all 6 bots the process uses about **500–550 MB of RAM** and around **half a CPU core**
   while everyone is busy. Path computation is the biggest cost (`performance.pathfinderTickMs`).
-  Every animal in the pen also costs the server: don't raise `rancher.maxCows` too much.
-- **If a bot dies**, it loses what it carried and respawns at spawn or its bed, then goes back to work.
+- **If a bot dies**, it respawns at spawn or its bed and goes back to work (with `keepInventory` it loses nothing).
 - **Change a bot's home:** `!casa <bot>` / 🏠 Fijar casa, or delete `data/home_<bot>.json`.
-- **Home chest broken:** the bot forgets that home and adopts another (except organizer and rancher).
+- **Home chest broken:** the bot forgets that home and adopts another (except organizer and artisan).
 - **Red warnings** in the log are mostly self-explanatory ("¿Es OP?" = is it OP?, "cofres llenos" = chests
   full, "no llego al cofre" = can't reach the chest…). Filter the log by bot to see why it's doing something.
 
@@ -328,7 +316,7 @@ Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft
 
 ```
 abrir_panel.bat        Opens the panel on Windows (recommended)
-panel.js               Manager for the 7 bots + panel server (127.0.0.1:3000)
+panel.js               Manager for the 6 bots + panel server (127.0.0.1:3000)
 panel/index.html       Panel UI
 panel/alerts.js        Bot alerts
 panel/serverlink.js    Link to the BotHelper plugin
@@ -341,14 +329,12 @@ bots/miner.js          Miner
 bots/farmer.js         Farmer
 bots/fisher.js         Fisher
 bots/organizer.js      Organizer
-bots/rancher.js        Rancher
 bots/artisan.js        Artisan (furnaces + tools)
 bots/warehouse.js      Warehouse access (used by the artisan and orders)
 server-plugin/         BotHelper plugin for Paper (source and build.ps1)
 data/                  Your world's data (created automatically, not committed):
   home_<bot>.json        each bot's home
   almacen.json           category of each organizer chest (backup of the signs)
-  corral.json            pens built by the rancher
   stats.json             accumulated statistics
   almacen_inventario.json  contents of each warehouse chest
 ```

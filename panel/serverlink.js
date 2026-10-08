@@ -98,6 +98,11 @@ function refreshChestsIfOlder(maxAgeMs) {
   if (Date.now() - chestsAt > maxAgeMs) refreshChests()
 }
 
+/** Registro de diagnóstico del plugin: { enable?, since, player, limit } → { enabled, events } */
+async function debugEvents(opts) {
+  return call('/events', opts)
+}
+
 async function runCommand(command) {
   return call('/command', { command })
 }
@@ -122,4 +127,4 @@ function start() {
   setInterval(refreshChests, CHESTS_MS).unref()
 }
 
-module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand }
+module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents }

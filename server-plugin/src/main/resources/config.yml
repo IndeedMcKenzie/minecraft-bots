@@ -10,7 +10,6 @@ bots:
   - Bot_Granjero
   - Bot_Pescador
   - Bot_Organizador
-  - Bot_Ganadero
   - Bot_Artesano
 prefix: "Bot_"
 
@@ -35,6 +34,11 @@ fishing:
   # Lo que pesca un bot aparece directamente a sus pies en vez de volar hacia él (desde algunas orillas
   # el objeto choca con el borde, cae al agua y se pierde)
   deliver-catch: true
+
+# Registro de diagnóstico (lo que el servidor ve que hacen los bots). Se puede activar sin reiniciar:
+# /bothelper debug on | off
+debug:
+  enabled: false
 
 # Conexión con el panel de control (solo desde este mismo PC)
 http:

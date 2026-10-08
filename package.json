@@ -1,7 +1,7 @@
 {
   "name": "minecraft-bots",
   "version": "1.0.0",
-  "description": "6 autonomous Minecraft bots (Mineflayer) with a web control panel: woodcutter, miner, farmer, fisher, rancher and organizer",
+  "description": "6 autonomous Minecraft bots (Mineflayer) with a web control panel: woodcutter, miner, farmer, fisher, organizer and artisan",
   "main": "panel.js",
   "license": "MIT",
   "author": "IndeedMcKenzie",
@@ -26,7 +26,7 @@
     "farmer": "node bots/farmer.js",
     "fisher": "node bots/fisher.js",
     "organizer": "node bots/organizer.js",
-    "rancher": "node bots/rancher.js"
+    "artisan": "node bots/artisan.js"
   },
   "dependencies": {
     "minecraft-data": "^3.68.0",

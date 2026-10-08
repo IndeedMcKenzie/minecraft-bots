@@ -82,6 +82,7 @@ final class PanelApi {
         server.createContext("/status", ex -> handle(ex, "GET", body -> status()));
         server.createContext("/chests", ex -> handle(ex, "POST", this::chests));
         server.createContext("/command", ex -> handle(ex, "POST", this::command));
+        server.createContext("/events", ex -> handle(ex, "POST", this::events));
         server.start();
     }
 
@@ -243,6 +244,17 @@ final class PanelApi {
             }
         }
         return null;
+    }
+
+    // ── /events (registro de diagnóstico) ─────────────────────
+
+    private Object events(JsonObject body) {
+        DebugLog log = plugin.debug();
+        if (body.has("enable")) log.setEnabled(body.get("enable").getAsBoolean());
+        long since = body.has("since") ? body.get("since").getAsLong() : 0;
+        String player = body.has("player") && !body.get("player").isJsonNull() ? body.get("player").getAsString() : null;
+        int limit = body.has("limit") ? Math.min(body.get("limit").getAsInt(), 3000) : 500;
+        return Map.of("ok", true, "enabled", log.isEnabled(), "events", log.query(since, player, limit));
     }
 
     // ── /command ─────────────────────────────────────────────

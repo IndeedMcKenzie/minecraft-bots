@@ -24,7 +24,6 @@ const BOT_DEFS = [
   { key: 'farmer',     label: 'Granjero', emoji: '🌾', file: './bots/farmer'     },
   { key: 'fisher',     label: 'Pescador', emoji: '🎣', file: './bots/fisher'     },
   { key: 'organizer',  label: 'Organizador', emoji: '🗂️', file: './bots/organizer' },
-  { key: 'rancher',    label: 'Ganadero', emoji: '🐄', file: './bots/rancher'    },
   { key: 'artisan',    label: 'Artesano', emoji: '🛠️', file: './bots/artisan'    },
 ]
 const DEF_BY_KEY = Object.fromEntries(BOT_DEFS.map(d => [d.key, d]))
@@ -418,6 +417,15 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/warehouse') return sendJson(res, 200, warehouseState())
 
+  // Registro de diagnóstico del plugin: /api/debug?player=Bot_Minero&since=<ms>&limit=200
+  if (req.method === 'GET' && url.pathname === '/api/debug') {
+    if (!serverlink.isOnline()) return sendJson(res, 409, { ok: false, error: 'El plugin BotHelper no está conectado' })
+    const q = url.searchParams
+    serverlink.debugEvents({ since: Number(q.get('since')) || 0, player: q.get('player') || null, limit: Number(q.get('limit')) || 200 })
+      .then(r => sendJson(res, 200, r)).catch(err => sendJson(res, 502, { ok: false, error: err.message }))
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' })
     res.write(`event: init\ndata: ${JSON.stringify({ logs, state: getState() })}\n\n`)
@@ -434,6 +442,12 @@ const server = http.createServer((req, res) => {
     if (parts[0] === 'api' && parts[1] === 'bots' && parts.length === 4) return handleAction(res, parts[2], parts[3])
     if (parts[0] === 'api' && parts[1] === 'warehouse' && parts.length === 3) return handleWarehouse(req, res, parts[2])
     if (url.pathname === '/api/console') return handleConsole(req, res)
+    if (url.pathname === '/api/debug') {
+      if (!serverlink.isOnline()) return sendJson(res, 409, { ok: false, error: 'El plugin BotHelper no está conectado' })
+      return readJson(req).then(body => serverlink.debugEvents({ enable: !!(body && body.enable), limit: 1 }))
+        .then(r => { console.log(`[Panel] 🔬 Registro de diagnóstico ${r.enabled ? 'activado' : 'desactivado'}.`); sendJson(res, 200, { ok: true, enabled: r.enabled, message: `Diagnóstico ${r.enabled ? 'activado' : 'desactivado'}` }) })
+        .catch(err => sendJson(res, 502, { ok: false, error: err.message }))
+    }
     if (parts[0] === 'api' && parts[1] === 'all' && parts.length === 3) {
       for (const d of BOT_DEFS) {
         if (parts[2] === 'start') startBot(d.key)
