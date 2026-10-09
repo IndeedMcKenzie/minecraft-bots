@@ -562,7 +562,8 @@ function noteOpenResult(bot, block, ok) {
 }
 
 function isInventoryFull(bot) {
-  return bot.inventory.emptySlotCount() <= homeCfg.returnWhenFreeSlots
+  // Se lee en cada uso: se puede cambiar desde la pestaña ⚙️ Ajustes del panel
+  return bot.inventory.emptySlotCount() <= ((cfg.home && cfg.home.returnWhenFreeSlots) || homeCfg.returnWhenFreeSlots)
 }
 
 function getDepositableItems(bot, keepItemNames = [], keepAmounts = {}) {
@@ -852,7 +853,8 @@ function findChestSpots(bot, existing) {
  * El servidor aplica los mismos filtros que el bot (bloques descartados y zonas de atasco, que se le mandan, y
  * opcionalmente suelo natural bajo un tronco), para no devolver candidatos que el bot tiraría después.
  * Busca en el mundo donde está el bot. Si la respuesta llega a `count` resultados, devuelve también saturated=true.
- * opts: { types: [nombres], center?, radius, count?, minY?, maxY?, mature?, bottom?, groundBelow? }
+ * opts: { types: [nombres], center?, radius, hRadius?, count?, minY?, maxY?, mature?, bottom?, groundBelow? }
+ * hRadius: además, como mucho a esta distancia en horizontal del centro (para no salirse de una zona de trabajo).
  */
 async function serverFindBlocks(bot, opts) {
   if (!bot.entity) return null
@@ -861,7 +863,7 @@ async function serverFindBlocks(bot, opts) {
     if (!link.isOnline()) return null
     const c = (opts.center || bot.entity.position).floored()
     const count = opts.count || 64
-    const r = await link.findBlocks({ player: bot.username, x: c.x, y: c.y, z: c.z, radius: opts.radius, types: opts.types, count,
+    const r = await link.findBlocks({ player: bot.username, x: c.x, y: c.y, z: c.z, radius: opts.radius, hRadius: opts.hRadius, types: opts.types, count,
       minY: opts.minY, maxY: opts.maxY, mature: !!opts.mature, bottom: !!opts.bottom, groundBelow: opts.groundBelow,
       exclude: excludedSpheres(bot) })
     const positions = r.positions.map(([x, y, z]) => new Vec3(x, y, z))
@@ -883,6 +885,68 @@ function excludedSpheres(bot) {
   }
   for (const zone of bot.stuckZones || []) if (zone.until > now) out.push([zone.pos.x, zone.pos.y, zone.pos.z, STUCK_ZONE_RADIUS])
   return out.slice(-300) // los más recientes; de sobra para lo que se acumula en unos minutos
+}
+
+// ── Zona de trabajo ──────────────────────────────────────────
+// Un círculo { x, y, z, radius } elegido en la pestaña 🗺️ Mapa del panel: el Leñador y el Minero trabajan solo
+// dentro de él (y vuelven a él tras guardar o tras un rescate), el Granjero lo usa como centro de su granja.
+// Siguen guardando en su casa. Se guardan en data/zones.json; sin zona, cada bot trabaja como siempre.
+const ZONES_FILE = path.join(HOMES_DIR, 'zones.json')
+let zones = {}
+try { zones = JSON.parse(fs.readFileSync(ZONES_FILE, 'utf8')) || {} } catch {}
+
+function getZone(key) {
+  const z = key && zones[key]
+  return z ? { ...z, pos: new Vec3(z.x, z.y, z.z) } : null
+}
+
+/** zone = { x, y, z, radius } o null para quitarla. */
+function setZone(key, zone) {
+  if (zone) zones[key] = { x: Math.floor(zone.x), y: Math.floor(zone.y), z: Math.floor(zone.z), radius: Math.floor(zone.radius) }
+  else delete zones[key]
+  try {
+    fs.mkdirSync(HOMES_DIR, { recursive: true })
+    fs.writeFileSync(ZONES_FILE, JSON.stringify(zones, null, 2))
+  } catch {}
+}
+
+function inZone(zone, pos, margin = 0) {
+  return distXZ(pos, zone) <= zone.radius + margin
+}
+
+/**
+ * Si el bot tiene zona y está fuera, va a ella (/tp por el plugin a la superficie si está lejos; caminando si está
+ * cerca). Devuelve true si se movió (el bucle del bot debe volver a empezar).
+ */
+async function goToZone(bot) {
+  const zone = getZone(bot.botKey)
+  if (!zone || !bot.entity || inZone(zone, bot.entity.position, 8)) return false
+  const dist = Math.round(distXZ(bot.entity.position, zone))
+  console.log(`[${bot.label}] 🎯 Voy a mi zona de trabajo ${fmtPos(zone.pos)} (a ${dist} bloques)...`)
+  if (dist > 48) {
+    try {
+      const link = require('../panel/serverlink')
+      if (link.isOnline()) {
+        const r = await link.teleport(bot.username, { x: zone.x + 0.5, y: zone.y, z: zone.z + 0.5, surface: true })
+        if (r && r.ok && await waitUntil(() => bot.entity && distXZ(bot.entity.position, zone) < 4, 4000)) {
+          await waitUntil(() => bot.blockAt(bot.entity.position.offset(0, -1, 0)) !== null, 5000)
+          await sleep(1000)
+          stats.add(bot.botKey, 'teletransportes')
+          return true
+        }
+      }
+    } catch {}
+    if (await teleportTo(bot, zone.pos)) return true
+  }
+  await safeGoto(bot, new GoalNearXZ(zone.x, zone.z, Math.max(3, Math.floor(zone.radius / 3))), 60)
+  return true
+}
+
+/** Exploración dentro de la zona: camina a un punto al azar de ella. */
+async function exploreZone(bot, zone) {
+  const a = Math.random() * Math.PI * 2
+  const d = Math.sqrt(Math.random()) * zone.radius
+  await safeGoto(bot, new GoalNearXZ(Math.floor(zone.x + Math.cos(a) * d), Math.floor(zone.z + Math.sin(a) * d), 3), 20)
 }
 
 // ── Espera sin gastar CPU ────────────────────────────────────
@@ -1323,6 +1387,7 @@ module.exports = {
   placeNewChest,
   reachHome,
   setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, serverFindBlocks,
+  getZone, setZone, inZone, goToZone, exploreZone,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos
 }

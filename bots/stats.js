@@ -12,7 +12,12 @@ const HOURLY_KEEP_MS = 48 * 60 * 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
 
 function emptyData() {
-  return { since: Date.now(), bots: {}, detail: {}, hourly: {} }
+  return { since: Date.now(), bots: {}, detail: {}, hourly: {}, work: {} }
+}
+
+// Producción principal de cada bot, guardada también por hora (gráficas por bot del panel)
+const MAIN_METRIC = {
+  woodcutter: 'arboles', miner: 'minerales', farmer: 'cosechas', fisher: 'capturas', organizer: 'ordenados', artisan: 'producidos',
 }
 
 let data = load()
@@ -37,6 +42,11 @@ function add(botKey, metric, n = 1) {
   if (!botKey || !n) return
   bump(data.bots[botKey] || (data.bots[botKey] = {}), metric, n)
   bump(session.bots[botKey] || (session.bots[botKey] = {}), metric, n)
+  if (MAIN_METRIC[botKey] === metric) {
+    const hour = Math.floor(Date.now() / HOUR_MS) * HOUR_MS
+    bump(data.work[hour] || (data.work[hour] = {}), botKey, n)
+    pruneHours(data.work)
+  }
   dirty = true
 }
 
@@ -53,9 +63,13 @@ function addHourly(botKey, n) {
   if (!botKey || !n) return
   const hour = Math.floor(Date.now() / HOUR_MS) * HOUR_MS
   bump(data.hourly[hour] || (data.hourly[hour] = {}), botKey, n)
-  const cutoff = Date.now() - HOURLY_KEEP_MS
-  for (const h of Object.keys(data.hourly)) if (Number(h) < cutoff) delete data.hourly[h]
+  pruneHours(data.hourly)
   dirty = true
+}
+
+function pruneHours(byHour) {
+  const cutoff = Date.now() - HOURLY_KEEP_MS
+  for (const h of Object.keys(byHour)) if (Number(h) < cutoff) delete byHour[h]
 }
 
 function snapshot() {
@@ -73,4 +87,4 @@ function save() {
 
 setInterval(save, 60 * 1000).unref()
 
-module.exports = { add, addDetail, addHourly, snapshot, save }
+module.exports = { add, addDetail, addHourly, snapshot, save, MAIN_METRIC }

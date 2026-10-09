@@ -39,6 +39,8 @@ const orgCfg = Object.assign({
   protect: [], categories: { Varios: ['*'] },
 }, cfg.organizer)
 const SOURCE_CHEST_RADIUS = (cfg.home && cfg.home.chestRadius) || 6
+// Se lee en cada ronda: se puede cambiar desde la pestaña ⚙️ Ajustes del panel
+const roundMinutes = () => (cfg.organizer && cfg.organizer.intervalMinutes) || orgCfg.intervalMinutes
 const ASSIGN_FILE = path.join(__dirname, '..', 'data', 'almacen.json')
 const RING_STEP = 6 // cuánto crece el radio del almacén cada vez que se queda sin hueco
 const SUPPLIES = ['chest', 'oak_sign'] // lo que usa para ampliar el almacén; no es carga
@@ -96,7 +98,7 @@ async function workLoop(bot) {
         bot.pendingCommand = null
         if (cmd === 'organize') {
           await organizeRound(bot)
-          nextRound = Date.now() + orgCfg.intervalMinutes * 60 * 1000
+          nextRound = Date.now() + roundMinutes() * 60 * 1000
         } else if (cmd === 'scan') {
           await scanInventory(bot)
         } else if (cmd === 'request') {
@@ -113,7 +115,7 @@ async function workLoop(bot) {
 
       if (Date.now() >= nextRound) {
         await organizeRound(bot)
-        nextRound = Date.now() + orgCfg.intervalMinutes * 60 * 1000
+        nextRound = Date.now() + roundMinutes() * 60 * 1000
         const last = inventory.summary().lastScan
         // Con el plugin BotHelper el panel ya sabe el contenido real: no hace falta revisar cofre por cofre
         if (!bot.pendingCommand && !inventory.isLive() && (!last || Date.now() - last > SCAN_EVERY_MS)) await scanInventory(bot)

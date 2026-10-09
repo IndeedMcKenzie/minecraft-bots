@@ -379,6 +379,63 @@
     background: var(--surface);
   }
 
+  /* ── Producción por bot (estadísticas) ── */
+  .work-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 12px; }
+  .work-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .work-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; }
+  .work-head .w-total { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .work-card svg { display: block; width: 100%; height: 64px; margin-top: 6px; overflow: visible; }
+  .work-card .w-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .work-card .w-area { opacity: .14; }
+  .work-card .w-dot { stroke: var(--surface); stroke-width: 1.5; }
+  .work-card .w-base { stroke: var(--border); stroke-width: 1; }
+  .work-sub { color: var(--muted); font-size: 12px; margin-top: 4px; min-height: 1.3em; }
+  .work-sub.down { color: var(--warn); font-weight: 600; }
+
+  /* ── Ajustes ── */
+  .settings-view { overflow: auto; }
+  .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 12px; align-items: start; }
+  .set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .set-row:last-child { border-bottom: none; padding-bottom: 2px; }
+  .set-label { font-weight: 600; font-size: 13.5px; }
+  .set-changed .set-label::after { content: ' · cambiado'; color: var(--accent); font-weight: 400; font-size: 12px; }
+  .set-help { color: var(--muted); font-size: 12.5px; }
+  .set-ctrl { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 8px; justify-self: end; }
+  .set-ctrl input[type=number] {
+    width: 78px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; text-align: right;
+  }
+  .set-ctrl input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .set-unit { color: var(--muted); font-size: 12px; }
+  .set-reset { font-size: 12px; padding: 3px 8px; }
+  .set-row.ores { grid-template-columns: minmax(0, 1fr); }
+  .set-row.ores .set-ctrl { grid-column: 1; grid-row: auto; justify-self: stretch; flex-direction: column; align-items: stretch; margin-top: 6px; }
+  .ore-list { display: grid; gap: 4px; }
+  .ore-row { display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); font-size: 13px; }
+  .ore-row.off { opacity: .55; }
+  .ore-row .ore-rank { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1.5em; }
+  .ore-row .ore-name { flex: 1; }
+  .ore-row button { padding: 1px 8px; font-size: 12px; }
+
+  /* ── Mapa: zonas de trabajo ── */
+  .map-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; }
+  .map-tools select, .map-tools input {
+    font: inherit; font-size: 13px; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px;
+  }
+  .map-tools input[type=number] { width: 70px; text-align: right; }
+  .map-box { position: relative; flex: 1; display: flex; min-height: 420px; }
+  .map-box .map-frame { min-height: 0; }
+  .map-cross { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); pointer-events: none; }
+  .map-cross::before, .map-cross::after {
+    content: ''; position: absolute; background: #fff; box-shadow: 0 0 0 1.5px rgba(0,0,0,.65); border-radius: 1px;
+  }
+  .map-cross::before { left: 14px; top: 0; width: 2px; height: 30px; }
+  .map-cross::after { top: 14px; left: 0; height: 2px; width: 30px; }
+  .map-help { margin-top: 8px; }
+  .zone-chip { display: inline-flex; align-items: center; gap: 6px; }
+  .zone-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
   @media (max-width: 600px) {
     header, main { padding-left: 16px; padding-right: 16px; }
   }
@@ -397,6 +454,7 @@
       <button class="view-tab" data-view="stats">📊 Estadísticas</button>
       <button class="view-tab" data-view="map" hidden>🗺️ Mapa</button>
       <button class="view-tab" data-view="console">🖥️ Consola</button>
+      <button class="view-tab" data-view="settings">⚙️ Ajustes</button>
     </nav>
     <div class="spacer"></div>
     <div class="actions">
@@ -420,6 +478,11 @@
     <section class="panel-card">
       <div class="card-title">Objetos guardados en casa por hora <span class="muted">· últimas 24 h, todos los bots</span></div>
       <div class="chart-wrap" id="hourly-chart"></div>
+    </section>
+
+    <section class="panel-card">
+      <div class="card-title">Producción de cada bot por hora <span class="muted">· últimas 24 h · su trabajo principal</span></div>
+      <div class="work-grid" id="work-charts"></div>
     </section>
 
     <section class="panel-card">
@@ -469,7 +532,31 @@
   </main>
 
   <main id="view-map" class="map-view" hidden>
-    <iframe class="map-frame" id="map-frame" title="Mapa del mundo (BlueMap)"></iframe>
+    <div class="map-tools">
+      <span class="card-title" style="margin:0">🎯 Zona de trabajo</span>
+      <select id="zone-bot" aria-label="Bot">
+        <option value="woodcutter">🪓 Leñador</option>
+        <option value="miner">⛏️ Minero</option>
+        <option value="farmer">🌾 Granjero</option>
+      </select>
+      <label class="meta">Radio <input type="number" id="zone-radius" min="8" max="128" step="4" value="48"> bloques</label>
+      <button class="primary" id="zone-set" title="Mueve el mapa hasta que la cruz del centro quede sobre el sitio y pulsa aquí">📍 Fijar en la cruz</button>
+      <button id="zone-clear">Quitar zona</button>
+      <span class="meta" id="zone-info"></span>
+    </div>
+    <div class="map-box">
+      <iframe class="map-frame" id="map-frame" title="Mapa del mundo (BlueMap)"></iframe>
+      <div class="map-cross" aria-hidden="true"></div>
+    </div>
+    <div class="meta map-help">Mueve el mapa hasta que la cruz quede sobre el sitio y pulsa «Fijar en la cruz»: el Leñador y el Minero
+      trabajarán solo dentro de ese círculo (y volverán a él) y el Granjero lo usará como su granja. Siguen guardando en su casa.
+      En el mapa se dibujan las casas, las zonas y el recorrido de cada bot en la última hora (se pueden ocultar en el menú de BlueMap).</div>
+  </main>
+
+  <main id="view-settings" class="settings-view" hidden>
+    <div class="wh-status">Los cambios se aplican al momento, sin reiniciar nada, y se guardan aunque cierres el panel.
+      «Restablecer» vuelve al valor de config.js.</div>
+    <div class="settings-grid" id="settings-groups"></div>
   </main>
 
   <main id="view-bots">
@@ -698,6 +785,7 @@ function renderState(state) {
     mapUrl = map
     $('[data-view="map"]').hidden = !mapUrl
   }
+  if (currentView === 'map') renderZoneInfo()
   const cards = $('#cards')
   for (const b of state.bots) {
     if (!cardEls[b.key]) {
@@ -831,6 +919,9 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     $('#view-warehouse').hidden = currentView !== 'warehouse'
     $('#view-map').hidden = currentView !== 'map'
     $('#view-console').hidden = currentView !== 'console'
+    $('#view-settings').hidden = currentView !== 'settings'
+    if (currentView === 'settings') loadSettings()
+    if (currentView === 'map') renderZoneInfo()
     if (currentView === 'console') setTimeout(() => $('#console-input').focus(), 0)
     clearInterval(dbgTimer)
     if (currentView === 'console') { pollDebug(); dbgTimer = setInterval(pollDebug, 3000) }
@@ -867,6 +958,7 @@ if (location.hash === '#stats') setTimeout(() => $('[data-view="stats"]').click(
 if (location.hash === '#consola') setTimeout(() => $('[data-view="console"]').click(), 0)
 if (location.hash === '#mapa') setTimeout(() => $('[data-view="map"]').click(), 300)
 if (location.hash === '#almacen') setTimeout(() => $('[data-view="warehouse"]').click(), 0)
+if (location.hash === '#ajustes') setTimeout(() => $('[data-view="settings"]').click(), 0)
 
 async function loadStats() {
   try {
@@ -908,7 +1000,7 @@ function renderStats() {
   // Fila de cifras clave
   const kpis = [
     { label: '🌲 Árboles talados', value: get('woodcutter', 'arboles') },
-    { label: '⛏️ Minerales extraídos', value: get('miner', 'minerales'), sub: `💎 ${fmtNum((det.minerales || {}).diamond)} diamantes` },
+    { label: '⛏️ Minerales obtenidos', value: get('miner', 'minerales'), sub: `💎 ${fmtNum((det.minerales || {}).diamond)} diamantes` },
     { label: '🌾 Cultivos cosechados', value: get('farmer', 'cosechas'), sub: `${fmtNum(get('farmer', 'siembras'))} sembrados` },
     { label: '🎣 Capturas de pesca', value: get('fisher', 'capturas') },
     // El Artesano sustituye al Fundidor y al Herrero: se suman también sus cifras anteriores
@@ -928,6 +1020,7 @@ function renderStats() {
   }))
 
   renderHourly(d.total.hourly || {}, d.bots, d.now)
+  renderWork(d.total.work || {}, d.bots, d.now)
   renderBotsTable(b, d.bots)
   renderHBars($('#bd-minerales'), det.minerales)
   renderHBars($('#bd-pesca'), det.pesca)
@@ -1061,9 +1154,243 @@ function renderHourly(hourly, bots, now) {
   })
 }
 
+// Una gráfica de línea por bot con su producción principal en cada una de las últimas 24 horas. La hora en curso
+// va aparte (está a medias); se avisa si la última hora completa quedó muy por debajo de su media.
+const WORK_WHAT = { woodcutter: 'árboles', miner: 'minerales', farmer: 'cosechas', fisher: 'capturas', organizer: 'ordenados', artisan: 'fundidos' }
+function renderWork(work, bots, now) {
+  const HOUR = 3600000
+  const lastHour = Math.floor(now / HOUR) * HOUR
+  const hours = Array.from({ length: 24 }, (_, i) => lastHour - (23 - i) * HOUR)
+  const firstHour = Math.min(...Object.keys(work).map(Number), lastHour)
+  const colors = Object.fromEntries(((lastState && lastState.bots) || []).map(b => [b.key, b.color]))
+  const hourLabel = h => new Date(h).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+  $('#work-charts').replaceChildren(...bots.filter(b => WORK_WHAT[b.key]).map(b => {
+    const vals = hours.map(h => (work[h] && work[h][b.key]) || 0)
+    const total = vals.reduce((a, v) => a + v, 0)
+    const color = colors[b.key] || 'var(--series-1)'
+    const card = document.createElement('div')
+    card.className = 'work-card'
+    card.innerHTML = '<div class="work-head"><span class="w-name"></span><span><span class="w-total"></span> <span class="muted w-what"></span></span></div><div class="w-chart"></div><div class="work-sub"></div>'
+    card.querySelector('.w-name').textContent = `${b.emoji} ${b.label}`
+    card.querySelector('.w-total').textContent = fmtNum(total)
+    card.querySelector('.w-what').textContent = WORK_WHAT[b.key]
+
+    const W = 240, H = 64, P = 3
+    const max = Math.max(1, ...vals)
+    const x = i => P + (i / 23) * (W - 2 * P)
+    const y = v => H - P - (v / max) * (H - 2 * P)
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+    const title = vals.map((v, i) => `${hourLabel(hours[i])}: ${v}`).join('\n')
+    card.querySelector('.w-chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${b.label}: ${total} ${WORK_WHAT[b.key]} en 24 h"><title>${title}</title>
+      <line class="w-base" x1="${P}" x2="${W - P}" y1="${H - P}" y2="${H - P}"/>
+      <polygon class="w-area" fill="${color}" points="${x(0)},${H - P} ${pts.join(' ')} ${x(23)},${H - P}"/>
+      <polyline class="w-line" stroke="${color}" points="${pts.join(' ')}"/>
+      <circle class="w-dot" fill="${color}" cx="${x(23)}" cy="${y(vals[23])}" r="3"/></svg>`
+
+    // Media de las horas completas con datos registrados (no cuenta horas anteriores a que existieran estas gráficas)
+    const full = vals.slice(0, 23).filter((v, i) => hours[i] >= firstHour)
+    const avg = full.length ? full.reduce((a, v) => a + v, 0) / full.length : 0
+    const prev = vals[22]
+    const sub = card.querySelector('.work-sub')
+    if (full.length < 2) sub.textContent = `Esta hora: ${vals[23]} · aún pocos datos`
+    else if (avg >= 4 && prev < avg * 0.5) {
+      sub.textContent = `⚠️ Última hora: ${prev} (su media es ${Math.round(avg)})`
+      sub.classList.add('down')
+    } else sub.textContent = `Esta hora: ${vals[23]} · media ${Math.round(avg)} por hora`
+    return card
+  }))
+}
+
 function openMap(pos) {
   mapFocus = pos
   $('[data-view="map"]').click()
+}
+
+// ── Zonas de trabajo (pestaña Mapa) ─────────────────────────
+const ZONE_DEFAULT_RADIUS = { woodcutter: 48, miner: 32, farmer: 32 }
+// Centro de lo que se mira en BlueMap: va en la dirección del mapa (#mundo:x:y:z:distancia:…), que se puede leer
+// porque el panel sirve BlueMap desde su misma dirección (/bluemap/)
+function mapCenter() {
+  try {
+    const parts = $('#map-frame').contentWindow.location.hash.slice(1).split(':')
+    if (parts.length < 4) return null
+    const [x, y, z] = parts.slice(1, 4).map(Number)
+    return [x, y, z].every(Number.isFinite) ? { x: Math.floor(x), y: Math.floor(y), z: Math.floor(z) } : null
+  } catch {
+    return null
+  }
+}
+
+function renderZoneInfo() {
+  if (!lastState) return
+  const key = $('#zone-bot').value
+  const b = lastState.bots.find(x => x.key === key)
+  const info = $('#zone-info')
+  if (!b) { info.textContent = ''; return }
+  info.replaceChildren()
+  const chip = document.createElement('span')
+  chip.className = 'zone-chip'
+  const dot = document.createElement('span')
+  dot.className = 'zone-dot'
+  dot.style.background = b.color || 'var(--accent)'
+  chip.append(dot, document.createTextNode(b.zone
+    ? `${b.label}: zona en (${b.zone.x}, ${b.zone.z}), radio ${b.zone.radius}`
+    : `${b.label}: sin zona (trabaja alrededor de ${b.key === 'farmer' ? 'su casa' : 'donde esté'})`))
+  info.append(chip)
+  $('#zone-clear').disabled = !b.zone
+}
+
+$('#zone-bot').addEventListener('change', () => {
+  const key = $('#zone-bot').value
+  const b = lastState && lastState.bots.find(x => x.key === key)
+  $('#zone-radius').value = (b && b.zone && b.zone.radius) || ZONE_DEFAULT_RADIUS[key]
+  renderZoneInfo()
+})
+$('#zone-set').addEventListener('click', async () => {
+  const c = mapCenter()
+  if (!c) return toast('No pude leer la posición del mapa: espera a que cargue y muévelo un poco', true)
+  const key = $('#zone-bot').value
+  const r = await postJson('/api/zone', { bot: key, ...c, radius: Number($('#zone-radius').value) })
+  if (r && r.ok) {
+    const b = lastState && lastState.bots.find(x => x.key === key)
+    if (b) b.zone = { ...c, radius: Number($('#zone-radius').value) }
+    renderZoneInfo()
+  }
+})
+$('#zone-clear').addEventListener('click', async () => {
+  const key = $('#zone-bot').value
+  const r = await postJson('/api/zone', { bot: key, clear: true })
+  if (r && r.ok) {
+    const b = lastState && lastState.bots.find(x => x.key === key)
+    if (b) b.zone = null
+    renderZoneInfo()
+  }
+})
+
+// ── Ajustes ─────────────────────────────────────────────────
+let settingsData = null
+async function loadSettings() {
+  try {
+    settingsData = (await (await fetch('/api/settings')).json()).settings
+    renderSettings()
+  } catch {
+    toast('No se pudieron cargar los ajustes', true)
+  }
+}
+
+async function saveSetting(path, value) {
+  const r = await postJson('/api/settings', { path, value })
+  if (r && r.settings) settingsData = r.settings
+  renderSettings()
+}
+
+function renderSettings() {
+  const groups = new Map()
+  for (const it of settingsData) {
+    if (!groups.has(it.group)) groups.set(it.group, [])
+    groups.get(it.group).push(it)
+  }
+  $('#settings-groups').replaceChildren(...[...groups].map(([name, items]) => {
+    const card = document.createElement('section')
+    card.className = 'panel-card'
+    const title = document.createElement('div')
+    title.className = 'card-title'
+    title.textContent = name
+    card.append(title, ...items.map(settingRow))
+    return card
+  }))
+}
+
+function settingRow(it) {
+  const row = document.createElement('div')
+  row.className = 'set-row' + (it.changed ? ' set-changed' : '') + (it.type === 'ores' ? ' ores' : '')
+  const label = document.createElement('div')
+  label.className = 'set-label'
+  label.textContent = it.label
+  const help = document.createElement('div')
+  help.className = 'set-help'
+  help.textContent = it.help || ''
+  const ctrl = document.createElement('div')
+  ctrl.className = 'set-ctrl'
+
+  if (it.type === 'int') {
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.min = it.min
+    input.max = it.max
+    input.value = it.value
+    input.setAttribute('aria-label', it.label)
+    const commit = () => {
+      const v = Number(input.value)
+      if (v === it.value) return
+      if (!Number.isInteger(v) || v < it.min || v > it.max) {
+        toast(`${it.label}: entre ${it.min} y ${it.max}`, true)
+        input.value = it.value
+        return
+      }
+      saveSetting(it.path, v)
+    }
+    input.addEventListener('change', commit)
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur() })
+    const unit = document.createElement('span')
+    unit.className = 'set-unit'
+    unit.textContent = it.unit || ''
+    ctrl.append(input, unit)
+  } else if (it.type === 'bool') {
+    const box = document.createElement('input')
+    box.type = 'checkbox'
+    box.checked = !!it.value
+    box.setAttribute('aria-label', it.label)
+    box.addEventListener('change', () => saveSetting(it.path, box.checked))
+    ctrl.append(box)
+  } else if (it.type === 'ores') {
+    // Lista completa: primero los activos en su orden, luego los desactivados
+    const active = it.value.slice()
+    const all = [...active, ...it.options.map(o => o.key).filter(k => !active.includes(k))]
+    const labelOf = Object.fromEntries(it.options.map(o => [o.key, o.label]))
+    const list = document.createElement('div')
+    list.className = 'ore-list'
+    all.forEach(key => {
+      const on = active.includes(key)
+      const idx = active.indexOf(key)
+      const r = document.createElement('div')
+      r.className = 'ore-row' + (on ? '' : ' off')
+      const box = document.createElement('input')
+      box.type = 'checkbox'
+      box.checked = on
+      box.setAttribute('aria-label', labelOf[key])
+      box.addEventListener('change', () => saveSetting(it.path, box.checked ? [...active, key] : active.filter(k => k !== key)))
+      const rank = document.createElement('span')
+      rank.className = 'ore-rank'
+      rank.textContent = on ? `${idx + 1}.` : '–'
+      const nm = document.createElement('span')
+      nm.className = 'ore-name'
+      nm.textContent = labelOf[key]
+      const up = document.createElement('button')
+      up.textContent = '↑'
+      up.title = 'Más prioridad'
+      up.disabled = !on || idx === 0
+      up.addEventListener('click', () => { const a = active.slice(); [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; saveSetting(it.path, a) })
+      const down = document.createElement('button')
+      down.textContent = '↓'
+      down.title = 'Menos prioridad'
+      down.disabled = !on || idx === active.length - 1
+      down.addEventListener('click', () => { const a = active.slice(); [a[idx + 1], a[idx]] = [a[idx], a[idx + 1]]; saveSetting(it.path, a) })
+      r.append(box, rank, nm, up, down)
+      list.append(r)
+    })
+    ctrl.append(list)
+  }
+  if (it.changed) {
+    const reset = document.createElement('button')
+    reset.className = 'set-reset'
+    reset.textContent = 'Restablecer'
+    reset.title = `Volver al valor de config.js (${Array.isArray(it.default) ? it.default.length + ' minerales' : it.default === true ? 'sí' : it.default === false ? 'no' : it.default})`
+    reset.addEventListener('click', () => saveSetting(it.path, null))
+    ctrl.append(reset)
+  }
+  row.append(label, ctrl, help)
+  return row
 }
 
 // ── Almacén: inventario y pedidos ───────────────────────────

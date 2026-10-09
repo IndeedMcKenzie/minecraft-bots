@@ -43,6 +43,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
     private PanelApi api;
     private DebugLog debug;
     private BotAssist assist;
+    private MapMarkers markers;
 
     @Override
     public void onEnable() {
@@ -53,12 +54,16 @@ public final class BotHelper extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(debug, this);
         assist = new BotAssist(this);
         getServer().getPluginManager().registerEvents(assist, this);
+        // Recorridos, casas y zonas de los bots en BlueMap (si está instalado: se carga antes por softdepend)
+        markers = new MapMarkers(this);
+        markers.start();
         startApi();
     }
 
     @Override
     public void onDisable() {
         stopApi();
+        if (markers != null) markers.stop();
     }
 
     private void loadSettings() {
@@ -109,6 +114,10 @@ public final class BotHelper extends JavaPlugin implements Listener {
 
     BotAssist assist() {
         return assist;
+    }
+
+    MapMarkers markers() {
+        return markers;
     }
 
     public boolean isBot(Player p) {

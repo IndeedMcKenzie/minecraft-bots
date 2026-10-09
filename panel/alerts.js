@@ -18,14 +18,15 @@ const STUCK_ALERT_COUNT = 3
 const DEATH_WINDOW_MIN = 15
 
 // Qué debe subir en cada bot y en cuántos minutos, para considerar que trabaja con normalidad
-const orgMinutes = ((cfg.organizer && cfg.organizer.intervalMinutes) || 20) * 2 + 10
+// Se calcula en cada uso: el intervalo se puede cambiar desde la pestaña ⚙️ Ajustes del panel
+const orgMinutes = () => ((cfg.organizer && cfg.organizer.intervalMinutes) || 20) * 2 + 10
 const PRODUCTIVITY = {
   woodcutter: { metric: 'arboles', minutes: 20, what: 'árboles talados' },
   miner: { metric: 'minerales', minutes: 20, what: 'minerales' },
   farmer: { metric: 'cosechas', minutes: 30, what: 'cosechas' },
   fisher: { metric: 'capturas', minutes: 10, what: 'capturas' },
   artisan: { metric: 'producidos', minutes: 45, what: 'objetos fundidos o cocinados' },
-  organizer: { metric: 'rondas', minutes: orgMinutes, what: 'rondas terminadas' },
+  organizer: { metric: 'rondas', get minutes() { return orgMinutes() }, what: 'rondas terminadas' },
 }
 const TRACKED = ['atascos', 'muertes', ...new Set(Object.values(PRODUCTIVITY).map(p => p.metric))]
 const LEVEL_ORDER = { err: 0, warn: 1, info: 2 }

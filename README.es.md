@@ -119,6 +119,9 @@ Puedes ver **«Esta sesión»** o **«Desde siempre»**:
 - **Cifras clave:** árboles talados, minerales (y diamantes), cultivos cosechados, capturas de pesca,
   terneros nacidos, objetos guardados y objetos ordenados por el organizador.
 - **Gráfico por horas** de objetos guardados en casa (últimas 24 h); al pasar el ratón desglosa por bot.
+- **Producción de cada bot por hora:** una gráfica por bot con su trabajo principal (árboles, minerales,
+  cosechas, capturas, objetos ordenados, fundidos) en las últimas 24 h; avisa si la última hora quedó muy por
+  debajo de su media.
 - **Tabla por bot:** tiempo conectado, objetos guardados, viajes a casa, teletransportes, atascos,
   cofres creados, muertes y expulsiones.
 - **Desgloses:** minerales por tipo, pesca por tipo y almacén por categoría.
@@ -128,7 +131,21 @@ Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo par
 ### 🗺️ Pestaña Mapa
 Muestra la web de **BlueMap** dentro del panel (o abre `http://127.0.0.1:3000/#mapa`), y cada tarjeta de bot
 tiene un botón **🗺️ Ver en el mapa** que la abre centrada en el bot. Solo se carga mientras la pestaña está
-abierta. Se configura en `config.js` → `panel.bluemapUrl` (`null` = sin pestaña).
+abierta. Se configura en `config.js` → `panel.bluemapUrl` (`null` = sin pestaña). El panel sirve BlueMap
+desde su misma dirección (`/bluemap/`), así que desde otro equipo no hace falta abrir el puerto de BlueMap.
+
+- **🎯 Zona de trabajo:** elige el Leñador, el Minero o el Granjero y un radio, mueve el mapa hasta que la **cruz
+  del centro** quede sobre el sitio y pulsa **«Fijar en la cruz»**. El Leñador y el Minero trabajan solo dentro de
+  ese círculo (si están fuera, van con /tp sobre el suelo o caminando) y el Granjero lo usa como su granja. Siguen
+  guardando en su casa. «Quitar zona» los devuelve a lo de siempre. Se guarda en `data/zones.json`.
+- **Recorridos, casas y zonas en el mapa** (con el plugin BotHelper 1.4): el recorrido de cada bot en la
+  **última hora** (una línea de su color), su casa y su zona. Se pueden ocultar en el menú de capas de BlueMap.
+
+### ⚙️ Pestaña Ajustes
+Cambia sin reiniciar nada los radios de búsqueda del Leñador, el Minero y el Granjero, **qué minerales busca el
+Minero y en qué orden**, si el Granjero amplía la granja, el intervalo del Organizador, cuántos huecos libres
+dejan antes de volver a guardar, el rescate desde el servidor y los avisos a Discord. Los cambios se guardan en
+`data/settings.json` y se aplican encima de `config.js`; «Restablecer» vuelve a su valor.
 
 ### 🖥️ Pestaña Consola
 Necesita el plugin **BotHelper** (ver abajo). Ejecuta comandos del servidor como la consola (con todos los
@@ -154,6 +171,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | 🆘 Rescate | El servidor sabe si un bot está en **lava, fuego, asfixiándose o ahogándose**, o cuánto lleva **quieto** aunque se reconecte; el panel lo devuelve a casa (`config.js` → `serverRescue`: Minero y Leñador, 4 min quietos lejos de casa) |
 | 🔇 Silencio | Sin mensajes de **entrada, salida, muerte ni logros** de los bots en el chat |
 | 🧲 Imán | Lo que suelta un bloque que rompe un bot **aparece a sus pies** |
+| 🗺️ Mapa | Dibuja en **BlueMap** (si está instalado) el recorrido de cada bot en la última hora, sus casas y sus zonas de trabajo |
 | 🔍 Búsquedas | El **servidor** busca los minerales, troncos y cultivos maduros para el Minero, el Leñador y el Granjero (en otro hilo, sin cargar chunks y con 2 ms por tick como mucho). Antes lo hacía el panel y lo congelaba varios segundos; sin el plugin, cada bot busca como antes |
 | 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola**; **registro de diagnóstico** de lo que hacen los bots |
 
@@ -328,6 +346,7 @@ panel.js               Gestor de los 6 bots + servidor del panel (127.0.0.1:3000
 panel/index.html       Interfaz del panel
 panel/alerts.js        Alertas de los bots
 panel/serverlink.js    Conexión con el plugin BotHelper
+panel/settings.js      Ajustes que se cambian desde el panel (data/settings.json)
 config.js              Toda la configuración
 bots/common.js         Lógica compartida: casa, viajes, cofres, rescate, órdenes del panel, /give, /tp
 bots/stats.js          Contadores de estadísticas

@@ -44,8 +44,11 @@ final class BlockFinder {
         this.plugin = plugin;
     }
 
-    /** exclude: esferas {x, y, z, r} donde no buscar (bloques descartados por el bot, zonas donde se atascó). */
-    record Request(World world, int cx, int cy, int cz, int radius, Set<Material> types, int count,
+    /**
+     * exclude: esferas {x, y, z, r} donde no buscar (bloques descartados por el bot, zonas donde se atascó).
+     * hRadius: si es > 0, además como mucho a esa distancia en horizontal del centro (zona de trabajo del bot).
+     */
+    record Request(World world, int cx, int cy, int cz, int radius, int hRadius, Set<Material> types, int count,
                    int minY, int maxY, boolean matureOnly, boolean bottomOnly, Set<Material> groundBelow,
                    List<double[]> exclude) { }
 
@@ -63,18 +66,20 @@ final class BlockFinder {
         int radius = Math.min(r.radius(), MAX_RADIUS);
         int count = Math.max(1, Math.min(r.count(), MAX_COUNT));
         double r2 = (double) radius * radius;
+        int flat = r.hRadius() > 0 ? Math.min(r.hRadius(), radius) : radius; // alcance en horizontal
+        double h2 = (double) flat * flat;
         int worldMin = r.world().getMinHeight();
         int minY = Math.max(r.minY(), worldMin);
         int maxY = Math.min(r.maxY(), r.world().getMaxHeight() - 1);
 
         // Chunks de la zona, del más cercano al más lejano (distancia mínima del centro al chunk)
         List<ChunkRef> chunks = new ArrayList<>();
-        for (int x = (r.cx() - radius) >> 4; x <= (r.cx() + radius) >> 4; x++) {
-            for (int z = (r.cz() - radius) >> 4; z <= (r.cz() + radius) >> 4; z++) {
+        for (int x = (r.cx() - flat) >> 4; x <= (r.cx() + flat) >> 4; x++) {
+            for (int z = (r.cz() - flat) >> 4; z <= (r.cz() + flat) >> 4; z++) {
                 double dx = Math.max(Math.max((x << 4) - r.cx(), r.cx() - ((x << 4) + 15)), 0);
                 double dz = Math.max(Math.max((z << 4) - r.cz(), r.cz() - ((z << 4) + 15)), 0);
                 double d = Math.sqrt(dx * dx + dz * dz);
-                if (d <= radius) chunks.add(new ChunkRef(x, z, d));
+                if (d <= flat) chunks.add(new ChunkRef(x, z, d));
             }
         }
         chunks.sort(Comparator.comparingDouble(ChunkRef::minDist));
@@ -94,7 +99,7 @@ final class BlockFinder {
                 if (item == null) { timedOut = true; break; }
                 if (item == END) break;
                 scanned++;
-                scanChunk(item.snapshot(), r, r2, minY, maxY, worldMin, hits);
+                scanChunk(item.snapshot(), r, r2, h2, minY, maxY, worldMin, hits);
                 // ¿Basta ya? Si hay suficientes y el siguiente chunk está más lejos que el último que nos quedaríamos
                 if (hits.size() >= count) {
                     hits.sort(Comparator.comparingDouble(Hit::dist));
@@ -113,13 +118,13 @@ final class BlockFinder {
         return Map.of("ok", true, "positions", out, "chunks", scanned, "timedOut", timedOut, "ms", (System.nanoTime() - t0) / 1_000_000);
     }
 
-    private static void scanChunk(ChunkSnapshot s, Request r, double r2, int minY, int maxY, int worldMin, List<Hit> hits) {
+    private static void scanChunk(ChunkSnapshot s, Request r, double r2, double h2, int minY, int maxY, int worldMin, List<Hit> hits) {
         int baseX = s.getX() << 4, baseZ = s.getZ() << 4;
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
                 int wx = baseX + lx, wz = baseZ + lz;
                 double hd2 = (double) (wx - r.cx()) * (wx - r.cx()) + (double) (wz - r.cz()) * (wz - r.cz());
-                if (hd2 > r2) continue;
+                if (hd2 > h2) continue;
                 for (int y = minY; y <= maxY; y++) {
                     Material m = s.getBlockType(lx, y, lz);
                     if (!r.types().contains(m)) continue;

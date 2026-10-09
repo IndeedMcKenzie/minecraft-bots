@@ -113,6 +113,11 @@ async function teleport(player, target) {
   return call('/teleport', { player, ...target })
 }
 
+/** Dibuja en BlueMap recorridos, casas y zonas de los bots (plugin 1.4). Devuelve { ok, bluemap }. */
+async function updateMapMarkers(bots) {
+  return call('/markers', { bots })
+}
+
 /** Datos de un jugador según el servidor (con stillSeconds y hazard si es un bot), o null. */
 function playerInfo(name) {
   return (online && status && status.players.find(p => p.name === name)) || null
@@ -142,4 +147,4 @@ function start() {
   setInterval(refreshChests, CHESTS_MS).unref()
 }
 
-module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo, findBlocks }
+module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo, findBlocks, updateMapMarkers }

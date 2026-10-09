@@ -8,6 +8,8 @@ const net = require('net')
 const path = require('path')
 const util = require('util')
 const cfg = require('./config')
+// Antes que nada: aplica sobre config.js los ajustes cambiados desde la pestaña ⚙️ Ajustes (data/settings.json)
+const settings = require('./panel/settings')
 const stats = require('./bots/stats')
 const { createAlerts } = require('./panel/alerts')
 const inventory = require('./bots/inventory')
@@ -27,6 +29,10 @@ const BOT_DEFS = [
   { key: 'artisan',    label: 'Artesano', emoji: '🛠️', file: './bots/artisan'    },
 ]
 const DEF_BY_KEY = Object.fromEntries(BOT_DEFS.map(d => [d.key, d]))
+// Color de cada bot en el mapa (recorridos y zonas): distintos entre sí y visibles sobre el terreno
+const BOT_COLORS = { woodcutter: '#e8a33d', miner: '#e5484d', farmer: '#46a758', fisher: '#3e8ed0', organizer: '#8e4ec6', artisan: '#d6409f' }
+// Bots que pueden tener zona de trabajo (los demás trabajan en su casa)
+const ZONE_BOTS = ['woodcutter', 'miner', 'farmer']
 
 // ── Captura de logs ──────────────────────────────────────────
 // Los bots escriben con console.log("[Minero] ..."): el prefijo indica de qué bot es
@@ -259,6 +265,65 @@ function botState(def) {
     maxChests: (cfg.home && cfg.home.maxChests) || 15,
     gifts: (cfg.bots[def.key].give || []).map(g => g.item.replace(/_/g, ' ') + (g.count > 1 ? ` ×${g.count}` : '')).join(', '),
     home: home ? { x: Math.floor(home.x), y: Math.floor(home.y), z: Math.floor(home.z) } : null,
+    zone: ZONE_BOTS.includes(def.key) ? zoneOf(def.key) : undefined,
+    color: BOT_COLORS[def.key],
+  }
+}
+
+function zoneOf(key) {
+  const z = require('./bots/common').getZone(key)
+  return z ? { x: z.x, y: z.y, z: z.z, radius: z.radius } : null
+}
+
+// ── Recorridos (se dibujan en BlueMap con el plugin) ─────────
+// Cada 15 s se apunta dónde está cada bot (si se movió al menos 2 bloques); se guarda la última hora, solo en memoria
+const TRAIL_SAMPLE_MS = 15000
+const TRAIL_KEEP_MS = 60 * 60000
+const trails = Object.fromEntries(BOT_DEFS.map(d => [d.key, []]))
+function sampleTrails() {
+  const now = Date.now()
+  for (const d of BOT_DEFS) {
+    const list = trails[d.key]
+    while (list.length && now - list[0].t > TRAIL_KEEP_MS) list.shift()
+    const bot = onlineBot(d.key)
+    if (!bot) continue
+    const p = bot.entity.position
+    const last = list[list.length - 1]
+    // Un salto grande (teletransporte) corta la línea: así no se dibuja una recta cruzando el mapa
+    if (last && Math.hypot(p.x - last.x, p.z - last.z) > 200) list.length = 0
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y, p.z - last.z) >= 2) {
+      list.push({ t: now, x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) })
+    }
+  }
+}
+
+// Manda al plugin lo que hay que dibujar en BlueMap (recorridos, casas y zonas)
+let mapMarkersWarned = false
+async function pushMapMarkers() {
+  if (!serverlink.isOnline()) return
+  const bots = BOT_DEFS.map(d => {
+    const bot = onlineBot(d.key)
+    const home = (bot && bot.home) || savedHome(d.key)
+    return {
+      key: d.key,
+      label: d.label,
+      color: BOT_COLORS[d.key],
+      trail: trails[d.key].map(p => [p.x, p.y, p.z]),
+      home: home ? [Math.floor(home.x), Math.floor(home.y), Math.floor(home.z)] : null,
+      zone: ZONE_BOTS.includes(d.key) ? zoneOf(d.key) : null,
+    }
+  })
+  try {
+    const r = await serverlink.updateMapMarkers(bots)
+    if (!r.bluemap && !mapMarkersWarned) {
+      mapMarkersWarned = true
+      console.warn('[Panel] 🗺️ El plugin no puede dibujar en BlueMap (¿BlueMap sin cargar?)')
+    }
+  } catch (err) {
+    if (!mapMarkersWarned) {
+      mapMarkersWarned = true
+      console.warn(`[Panel] 🗺️ Recorridos en el mapa: el plugin no responde a /markers (hace falta BotHelper 1.4): ${err.message}`)
+    }
   }
 }
 
@@ -282,7 +347,8 @@ function getState() {
     startedAt,
     memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
     loopDelay: loopStats, // retraso del panel en el último minuto (ms)
-    map: (cfg.panel && cfg.panel.bluemapUrl) || null,
+    // BlueMap se sirve a través del panel (misma dirección): así el panel puede leer qué punto del mapa se mira
+    map: (cfg.panel && cfg.panel.bluemapUrl) ? '/bluemap' : null,
     bots: BOT_DEFS.map(botState),
   }
 }
@@ -389,6 +455,58 @@ async function handleConsole(req, res) {
   }
 }
 
+// ── Ajustes y zonas de trabajo ───────────────────────────────
+async function handleSettings(req, res) {
+  const body = await readJson(req)
+  if (!body || typeof body.path !== 'string' || !('value' in body)) return sendJson(res, 400, { ok: false, error: 'Petición no válida' })
+  const r = settings.update(body.path, body.value)
+  if (!r.ok) return sendJson(res, 400, r)
+  const shown = Array.isArray(r.value) ? r.value.join(', ') : (r.value === true ? 'sí' : r.value === false ? 'no' : r.value)
+  console.log(`[Panel] ⚙️ Ajuste cambiado: ${r.label} → ${shown}${body.value === null ? ' (valor de config.js)' : ''}`)
+  sendJson(res, 200, { ok: true, message: `${r.label}: ${shown}`, settings: settings.list() })
+}
+
+async function handleZone(req, res) {
+  const body = await readJson(req)
+  const key = body && String(body.bot || '')
+  if (!ZONE_BOTS.includes(key)) return sendJson(res, 400, { ok: false, error: 'Solo el Leñador, el Minero y el Granjero tienen zona de trabajo' })
+  const common = require('./bots/common')
+  const label = DEF_BY_KEY[key].label
+  if (body.clear) {
+    common.setZone(key, null)
+    console.log(`[${label}] 🎯 Zona de trabajo quitada: vuelvo a trabajar como siempre.`)
+    pushMapMarkers()
+    return sendJson(res, 200, { ok: true, message: `${label}: zona quitada` })
+  }
+  const x = Math.floor(Number(body.x)), y = Math.floor(Number(body.y)), z = Math.floor(Number(body.z)), radius = Math.floor(Number(body.radius))
+  if (![x, y, z].every(Number.isFinite) || Math.abs(x) > 3e7 || Math.abs(z) > 3e7 || y < -64 || y > 320) return sendJson(res, 400, { ok: false, error: 'Coordenadas no válidas' })
+  if (!(radius >= 8 && radius <= 128)) return sendJson(res, 400, { ok: false, error: 'El radio debe estar entre 8 y 128 bloques' })
+  common.setZone(key, { x, y, z, radius })
+  console.log(`[${label}] 🎯 Nueva zona de trabajo: (${x}, ${y}, ${z}), radio ${radius}.`)
+  pushMapMarkers()
+  sendJson(res, 200, { ok: true, message: `${label}: zona de trabajo en (${x}, ${z}), radio ${radius}` })
+}
+
+// ── BlueMap a través del panel ───────────────────────────────
+// La pestaña Mapa carga BlueMap desde /bluemap/ (mismo origen que el panel) para poder leer la posición que se está
+// mirando y fijar zonas de trabajo. También evita abrir el puerto de BlueMap a la red.
+function proxyBlueMap(req, res, url) {
+  const base = new URL(cfg.panel.bluemapUrl)
+  if (url.pathname === '/bluemap') { res.writeHead(301, { Location: '/bluemap/' + url.search }); return res.end() }
+  const headers = { ...req.headers, host: base.host }
+  delete headers.cookie // las del panel no son de BlueMap
+  const up = http.request({ hostname: base.hostname, port: base.port || 80, method: req.method, path: url.pathname.slice('/bluemap'.length) + url.search, headers }, upRes => {
+    res.writeHead(upRes.statusCode, upRes.headers)
+    upRes.pipe(res)
+  })
+  up.setTimeout(30000, () => up.destroy(new Error('timeout')))
+  up.on('error', () => {
+    if (!res.headersSent) { res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('BlueMap no responde') } else res.destroy()
+  })
+  res.on('close', () => { if (!res.writableFinished) up.destroy() })
+  up.end()
+}
+
 // ── Servidor HTTP ────────────────────────────────────────────
 function sendJson(res, code, data) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -476,6 +594,10 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/state') return sendJson(res, 200, getState())
 
+  if ((req.method === 'GET' || req.method === 'HEAD') && cfg.panel && cfg.panel.bluemapUrl && /^\/bluemap(\/|$)/.test(url.pathname)) return proxyBlueMap(req, res, url)
+
+  if (req.method === 'GET' && url.pathname === '/api/settings') return sendJson(res, 200, { settings: settings.list() })
+
   if (req.method === 'GET' && url.pathname === '/api/stats') {
     return sendJson(res, 200, {
       ...stats.snapshot(),
@@ -511,6 +633,8 @@ const server = http.createServer((req, res) => {
     if (parts[0] === 'api' && parts[1] === 'bots' && parts.length === 4) return handleAction(res, parts[2], parts[3])
     if (parts[0] === 'api' && parts[1] === 'warehouse' && parts.length === 3) return handleWarehouse(req, res, parts[2])
     if (url.pathname === '/api/console') return handleConsole(req, res)
+    if (url.pathname === '/api/settings') return handleSettings(req, res)
+    if (url.pathname === '/api/zone') return handleZone(req, res)
     if (url.pathname === '/api/debug') {
       if (!serverlink.isOnline()) return sendJson(res, 409, { ok: false, error: 'El plugin BotHelper no está conectado' })
       return readJson(req).then(body => serverlink.debugEvents({ enable: !!(body && body.enable), limit: 1 }))
@@ -562,6 +686,8 @@ server.listen(PORT, HOST, () => {
   setInterval(() => broadcast('state', getState()), STATE_INTERVAL_MS)
   setInterval(evaluateAlerts, 10000)
   setInterval(serverRescueCheck, 10000)
+  setInterval(sampleTrails, TRAIL_SAMPLE_MS)
+  setInterval(pushMapMarkers, 30000)
   // Tiempo conectado de cada bot (para las estadísticas)
   setInterval(() => {
     for (const d of BOT_DEFS) {

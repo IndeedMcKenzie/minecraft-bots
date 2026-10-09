@@ -122,6 +122,8 @@ for **this session** or **all time**:
 - **Key figures:** trees chopped, ores mined (and diamonds), crops harvested, fish caught, calves born,
   items stored and items sorted by the organizer.
 - **Hourly chart** of items stored at home (last 24 h); hover for a per-bot breakdown.
+- **Per-bot output per hour:** one chart per bot with its main job (trees, ores, crops, catches, items sorted,
+  items smelted) over the last 24 h; it warns if the last hour was far below the bot's average.
 - **Per-bot table:** time online, items stored, trips home, teleports, times stuck, chests placed,
   deaths and kicks.
 - **Breakdowns:** ores by type, catches by type and warehouse by category.
@@ -131,7 +133,21 @@ Saved to `data/stats.json` (every minute and on shutdown). Delete that file to s
 ### 🗺️ Map tab
 Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#mapa`), and each bot card has a
 **🗺️ Ver en el mapa** button that opens it centred on the bot. It only loads while the tab is open. Set it in
-`config.js` → `panel.bluemapUrl` (`null` = no tab).
+`config.js` → `panel.bluemapUrl` (`null` = no tab). The panel serves BlueMap from its own address
+(`/bluemap/`), so other computers don't need BlueMap's port.
+
+- **🎯 Work zone:** pick the woodcutter, miner or farmer and a radius, move the map until the **centre cross** is
+  over the spot and press **«Fijar en la cruz»**. The woodcutter and miner then only work inside that circle (if
+  they're outside, they go there by /tp onto the ground or on foot) and the farmer uses it as its farm. They still
+  store at home. «Quitar zona» brings them back to normal. Saved in `data/zones.json`.
+- **Trails, homes and zones on the map** (with the BotHelper 1.4 plugin): each bot's path over the **last hour**
+  (a line in its colour), its home and its zone. They can be hidden in BlueMap's layer menu.
+
+### ⚙️ Settings tab
+Change without restarting anything the woodcutter's, miner's and farmer's search radii, **which ores the miner
+looks for and in what order**, whether the farmer expands its farm, the organizer's interval, how many free slots
+the bots keep before going home, the server rescue and the Discord alerts. Changes are saved in
+`data/settings.json` and applied on top of `config.js`; «Restablecer» goes back to its value.
 
 ### 🖥️ Console tab
 Needs the **BotHelper** plugin (below). Runs server commands as the console (full permissions) and shows the
@@ -157,6 +173,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 | 🆘 Rescue | The server knows if a bot is in **lava, fire, suffocating or drowning**, or how long it has been **still** even across reconnects; the panel brings it home (`config.js` → `serverRescue`: miner and woodcutter, 4 min still away from home) |
 | 🔇 Silence | No **join, leave, death or advancement** messages for bots in chat |
 | 🧲 Magnet | Whatever a block broken by a bot drops **appears at its feet** |
+| 🗺️ Map | Draws on **BlueMap** (if installed) each bot's path over the last hour, its home and its work zone |
 | 🔍 Searches | The **server** finds ores, logs and ripe crops for the miner, woodcutter and farmer (on another thread, without loading chunks, at most 2 ms per tick). The panel used to do it and froze for seconds; without the plugin each bot searches as before |
 | 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console**; **diagnostic log** of what the bots do |
 
@@ -332,6 +349,7 @@ panel.js               Manager for the 6 bots + panel server (127.0.0.1:3000)
 panel/index.html       Panel UI
 panel/alerts.js        Bot alerts
 panel/serverlink.js    Link to the BotHelper plugin
+panel/settings.js      Settings changed from the panel (data/settings.json)
 config.js              All the configuration
 bots/common.js         Shared logic: home, travel, chests, rescue, panel commands, /give, /tp
 bots/stats.js          Statistics counters

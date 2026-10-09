@@ -25,6 +25,10 @@ const {
   inReach,
   teleportTo,
   serverFindBlocks,
+  getZone,
+  inZone,
+  goToZone,
+  exploreZone,
   setIssue,
   clearIssue,
   sleep,
@@ -99,10 +103,20 @@ async function workLoop(bot) {
         console.log('[Leñador] ✊ Sin hacha en inventario. Talando con las manos...')
       } else clearIssue(bot, 'tool')
 
-      // 4. Buscar árbol cercano
-      const logBlock = await findTree(bot, mcData)
+      // 4. Si tiene zona de trabajo (elegida en el mapa del panel) y está fuera, ir a ella
+      if (await goToZone(bot)) continue
+
+      // 5. Buscar árbol cercano (dentro de su zona, si tiene)
+      const zone = getZone('woodcutter')
+      const logBlock = await findTree(bot, mcData, zone)
       bot.currentTarget = logBlock ? logBlock.position : null // si se atasca yendo, se descarta
 
+      if (!logBlock && zone) {
+        console.log('[Leñador] 🌲 Ahora no hay árboles en mi zona. La recorro mientras crecen los brotes...')
+        await exploreZone(bot, zone)
+        await sleep(3000)
+        continue
+      }
       if (!logBlock) {
         // Tras un rescate o al volver de guardar puede estar lejos del bosque donde talaba: volver allí
         // con /tp en vez de explorar a ciegas desde casa (alrededor de casa ya no suele quedar nada)
@@ -120,7 +134,7 @@ async function workLoop(bot) {
 
       console.log(`[Leñador] 🌲 Árbol en ${fmtPos(logBlock.position)} — acercándome...`)
 
-      // 5. Ir de forma segura hasta el árbol
+      // 6. Ir de forma segura hasta el árbol
       const reached = await safeGoto(bot, new GoalNear(logBlock.position.x, logBlock.position.y, logBlock.position.z, 2), 15)
       if (!reached) {
         console.log('[Leñador] ⚠️ No pude alcanzar este árbol, buscando otro...')
@@ -129,7 +143,8 @@ async function workLoop(bot) {
         continue
       }
 
-      // 6. Talar el árbol completo de abajo hacia arriba
+      // 7. Talar el árbol completo de abajo hacia arriba
+      const logsBefore = countLogs(bot)
       const cut = await fellTree(bot, mcData, logBlock)
       if (cut === 0) {
         markBad(bot, logBlock.position)
@@ -139,12 +154,15 @@ async function workLoop(bot) {
       bot.lastForest = logBlock.position.clone()
       stats.add('woodcutter', 'arboles')
 
-      // 7. Replantar brote
+      // 8. Replantar brote
       await tryReplant(bot, logBlock)
 
-      // 8. Recoger drops del suelo (madera, brotes, manzanas)
+      // 9. Recoger drops del suelo (madera, brotes, manzanas)
       await sleep(1000)
       await collectNearbyItems(bot, 10)
+      // Lo que de verdad ganó: el plugin Veinminer del servidor rompe el árbol entero al picar la base, así que
+      // los troncos que pica el bot (cut) no dicen cuánta madera consiguió
+      console.log(`[Leñador] ✅ Árbol talado: +${countLogs(bot) - logsBefore} troncos`)
 
       await sleep(1500)
     } catch (err) {
@@ -189,22 +207,28 @@ async function fellTree(bot, mcData, baseBlock) {
     pos = pos.offset(0, 1, 0)
   }
 
-  if (count > 0) {
-    console.log(`[Leñador] ✅ Talados ${count} troncos`)
-  }
   return count
+}
+
+// Troncos en el inventario (para saber cuántos dio cada árbol)
+function countLogs(bot) {
+  return bot.inventory.items().filter(i => /_(log|wood|stem|hyphae)$/.test(i.name)).reduce((a, i) => a + i.count, 0)
 }
 
 // ── Buscar un árbol ──────────────────────────────────────────
 // Tronco más cercano que sea la base de un árbol sobre suelo natural. Lo busca el servidor (plugin) con los mismos
 // filtros (suelo natural, descartados y zonas de atasco) y, si no está, el bot como siempre
-async function findTree(bot, mcData) {
-  const usable = block => block && !isBad(bot, block.position) && !inStuckZone(bot, block.position) && isBottomLog(bot, block)
+// Con zona: solo dentro de ella (en horizontal), buscando desde su centro
+async function findTree(bot, mcData, zone) {
+  const usable = block => block && !isBad(bot, block.position) && !inStuckZone(bot, block.position) && isBottomLog(bot, block) &&
+    (!zone || inZone(zone, block.position))
+  const center = zone ? new Vec3(zone.x, Math.floor(bot.entity.position.y), zone.z) : null
   const localSearch = () => {
     const logIds = LOG_TYPES.map(n => mcData.blocksByName[n]?.id).filter(Boolean)
-    return bot.findBlock({ matching: logIds, maxDistance: cfg.search.woodRadius, useExtraInfo: usable })
+    return bot.findBlock({ matching: logIds, point: center || undefined, maxDistance: cfg.search.woodRadius, useExtraInfo: usable })
   }
-  const remote = await serverFindBlocks(bot, { types: LOG_TYPES, radius: cfg.search.woodRadius, count: 48, bottom: true, groundBelow: NATURAL_GROUND })
+  const remote = await serverFindBlocks(bot, { types: LOG_TYPES, center, radius: cfg.search.woodRadius, hRadius: zone ? zone.radius : undefined,
+    count: 48, bottom: true, groundBelow: NATURAL_GROUND })
   if (!remote) return localSearch()
   const found = remote.map(p => bot.blockAt(p)).find(usable)
   // Si el bot descartó todo lo que mandó el servidor y había más, búsqueda local de respaldo

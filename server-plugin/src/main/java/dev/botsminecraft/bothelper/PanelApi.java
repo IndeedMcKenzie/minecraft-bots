@@ -93,6 +93,7 @@ final class PanelApi {
         server.createContext("/command", ex -> handle(ex, "POST", this::command));
         server.createContext("/events", ex -> handle(ex, "POST", this::events));
         server.createContext("/teleport", ex -> handle(ex, "POST", this::teleport));
+        server.createContext("/markers", ex -> handle(ex, "POST", this::markers));
         // El hilo HTTP solo entrega la petición al carril de búsquedas y queda libre al momento
         server.createContext("/find", ex -> findLane.execute(() -> {
             try { handle(ex, "POST", this::find); } catch (IOException ignored) { }
@@ -290,7 +291,8 @@ final class PanelApi {
         }
         return finder.find(new BlockFinder.Request(w,
             body.get("x").getAsInt(), body.get("y").getAsInt(), body.get("z").getAsInt(),
-            body.has("radius") ? body.get("radius").getAsInt() : 32, types,
+            body.has("radius") ? body.get("radius").getAsInt() : 32,
+            body.has("hRadius") && !body.get("hRadius").isJsonNull() ? body.get("hRadius").getAsInt() : 0, types,
             body.has("count") ? body.get("count").getAsInt() : 64,
             body.has("minY") ? body.get("minY").getAsInt() : Integer.MIN_VALUE,
             body.has("maxY") ? body.get("maxY").getAsInt() : Integer.MAX_VALUE,
@@ -323,13 +325,27 @@ final class PanelApi {
             } else {
                 World w = body.has("world") ? Bukkit.getWorld(body.get("world").getAsString()) : p.getWorld();
                 if (w == null) return Map.of("ok", false, "error", "Mundo desconocido");
-                dest = new Location(w, body.get("x").getAsDouble(), body.get("y").getAsDouble(), body.get("z").getAsDouble(),
-                    p.getLocation().getYaw(), p.getLocation().getPitch());
+                double x = body.get("x").getAsDouble(), z = body.get("z").getAsDouble();
+                // surface: encima del bloque más alto de esa columna (zona de trabajo elegida en el mapa: la altura
+                // de la vista del mapa no tiene por qué ser la del suelo)
+                double y = body.has("surface") && body.get("surface").getAsBoolean()
+                    ? w.getHighestBlockYAt((int) Math.floor(x), (int) Math.floor(z)) + 1
+                    : body.get("y").getAsDouble();
+                dest = new Location(w, x, y, z, p.getLocation().getYaw(), p.getLocation().getPitch());
             }
             boolean ok = p.teleport(dest, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
             if (ok && plugin.assist() != null) plugin.assist().resetTracking(p);
             return Map.of("ok", ok);
         });
+    }
+
+    // ── /markers (BlueMap) ───────────────────────────────────
+    // { bots: [{ key, label, color, trail: [[x,y,z]…], home: [x,y,z] | null, zone: {x,y,z,radius} | null }] }
+    // Sustituye todo lo dibujado; el panel lo manda cada 30 s.
+    private Object markers(JsonObject body) {
+        MapMarkers m = plugin.markers();
+        boolean ok = m != null && m.update(body);
+        return Map.of("ok", ok, "bluemap", m != null && m.available());
     }
 
     // ── /events (registro de diagnóstico) ─────────────────────

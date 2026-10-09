@@ -6,13 +6,14 @@ const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
-const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, idleSleep, serverFindBlocks, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
+const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, idleSleep, serverFindBlocks, getZone, goToZone, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
 
-const FARM_RADIUS = () => cfg.search.farmRadius || 32
-
-// La granja está alrededor de casa: todas las búsquedas parten de ahí (si no, el bot "deriva" y no vuelve)
+// La granja está alrededor de casa o, si se eligió en el mapa del panel, de su zona de trabajo (con su radio):
+// todas las búsquedas parten de ahí (si no, el bot "deriva" y no vuelve). Se leen en cada uso.
+const FARM_RADIUS = () => { const z = getZone('farmer'); return z ? z.radius : (cfg.search.farmRadius || 32) }
 function farmCenter(bot) {
-  return bot.home || bot.entity.position.floored()
+  const z = getZone('farmer')
+  return z ? z.pos : (bot.home || bot.entity.position.floored())
 }
 
 const HOES = ['netherite_hoe', 'diamond_hoe', 'iron_hoe', 'golden_hoe', 'stone_hoe', 'wooden_hoe']
@@ -63,8 +64,10 @@ async function workLoop(bot) {
 
       const mcData = bot.registry
 
-      // Si se ha alejado de la granja (persiguiendo hierba, objetos…), volver antes de nada
-      if (bot.home && bot.entity.position.distanceTo(bot.home) > FARM_RADIUS() + 8) {
+      // Si se ha alejado de la granja (persiguiendo hierba, objetos…), volver antes de nada: a su zona si tiene,
+      // si no a casa
+      if (await goToZone(bot)) continue
+      if (!getZone('farmer') && bot.home && bot.entity.position.distanceTo(bot.home) > FARM_RADIUS() + 8) {
         console.log(`[Granjero] 🧭 Estoy lejos de la granja (${Math.round(bot.entity.position.distanceTo(bot.home))} bloques). Volviendo...`)
         if (!await reachHome(bot)) { await sleep(30000); continue }
       }

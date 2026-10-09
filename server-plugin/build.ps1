@@ -15,6 +15,10 @@ $classes = Join-Path $out "classes"
 
 $libs = Get-ChildItem (Join-Path $ServerDir "libraries") -Recurse -Filter *.jar | ForEach-Object { $_.FullName }
 if (-not $libs) { throw "No encontré las librerías del servidor en $ServerDir\libraries (arranca el servidor una vez)" }
+# API de BlueMap (opcional: recorridos y zonas en el mapa). Solo para compilar; no se mete en el .jar
+$bluemap = Get-ChildItem (Join-Path $ServerDir "plugins") -Filter "bluemap*.jar" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $bluemap) { throw "Falta el plugin BlueMap en $ServerDir\plugins (hace falta su API para compilar MapMarkers)" }
+$libs = @($libs) + $bluemap.FullName
 
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $classes | Out-Null
