@@ -84,6 +84,7 @@ module.exports = {
     returnWhenFreeSlots: 2,  // Vuelve a casa cuando le quedan ≤ N huecos libres en el inventario
     returnToWorkSpot: true,  // Tras guardar, regresa al sitio donde estaba trabajando
     maxTravelMinutes: 3,     // Si caminando no llega a casa en este tiempo, usa /tp (requiere OP y stuck.allowTeleport)
+    teleportDistance: 150,   // Más lejos de esto (o bajo tierra), ida y vuelta a casa con /tp directamente, sin caminar
     chestRadius: 6,          // Cofres a esta distancia del cofre de casa también se usan
     autoChests: true,        // Si todos los cofres de casa están llenos, se da uno nuevo con /give y lo coloca (requiere OP)
     maxChests: 15,           // Máximo de cofres por casa (cuenta cada mitad de un cofre doble)

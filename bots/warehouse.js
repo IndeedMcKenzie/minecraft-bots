@@ -116,6 +116,11 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
     console.warn(`[${label}] 🏬 No hay almacén: el Organizador aún no tiene casa.`)
     return {}
   }
+  // Con el inventario en vivo (el plugin lee los cofres cada 30 s) se sabe si hay lo que se busca: si no lo tiene
+  // ningún cofre, no hace falta ir (el Artesano iba y volvía cada pocos minutos para nada: 126 /tp en 1,3 h)
+  const live = inventory.isLive()
+  const inCats = w => cat => !(w.cats && w.cats.length) || w.cats.map(normalize).includes(normalize(cat))
+  if (live && !wants.some(w => inventory.anyChestHas(w.test, inCats(w)))) return {}
   if (!await teleportTo(bot, home)) return {}
 
   const remaining = wants.map(w => ({ ...w, left: w.max }))
@@ -124,12 +129,14 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
     .filter(([k]) => cats.size === 0 || cats.has(k))
     .flatMap(([k, list]) => list.map(chest => Object.assign(chest, { catKey: k })))
     .sort((a, b) => a.position.distanceTo(bot.entity.position) - b.position.distanceTo(bot.entity.position))
-  // Primero los cofres donde el inventario dice que está lo que se busca; los que seguro que no lo tienen, al final
+  // Primero los cofres donde el inventario dice que está lo que se busca; los que seguro que no lo tienen, al final.
+  // Con el inventario en vivo, los que no lo tienen ni se abren
   const knownRank = chest => {
     const has = inventory.chestHas(chest, name => remaining.some(r => r.test(name)))
     return has === true ? 0 : has === null ? 1 : 2
   }
   chests.sort((a, b) => knownRank(a) - knownRank(b))
+  if (live) chests.splice(0, chests.length, ...chests.filter(c => knownRank(c) === 0))
 
   const before = countByName(bot)
   for (const chest of chests) {

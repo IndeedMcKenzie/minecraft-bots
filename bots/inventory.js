@@ -74,6 +74,15 @@ function chestHas(block, test) {
   return Object.keys(c.items).some(test)
 }
 
+/**
+ * ¿Algún cofre del almacén tiene algo que cumple test? (con el inventario en vivo: dato exacto de hace ≤30 s)
+ * catOk(categoría del cofre) limita a los cofres donde se va a buscar: si no, un objeto mal colocado en otra categoría
+ * hacía viajar al Artesano cada ciclo para no encontrar nada (carne cruda en "Varios").
+ */
+function anyChestHas(test, catOk = () => true) {
+  return Object.values(data.chests).some(c => catOk(c.cat || '') && Object.keys(c.items).some(test))
+}
+
 /** Apunta el contenido de un cofre del almacén (bloque del cofre y lista de objetos de mineflayer). */
 function recordChest(block, cat, items) {
   if (isLive()) return
@@ -122,4 +131,4 @@ function catsWith(itemName) {
   return [...new Set(Object.values(data.chests).filter(c => c.items[itemName]).map(c => c.cat).filter(Boolean))]
 }
 
-module.exports = { recordChest, finishScan, summary, catsWith, chestKey, setLive, isLive, chestHas }
+module.exports = { recordChest, finishScan, summary, catsWith, chestKey, setLive, isLive, chestHas, anyChestHas }

@@ -45,8 +45,24 @@ function botOptions(botKey) {
     // Ticks de física que recupera cada bot si se retrasa (mineflayer: 4). Con varios bots en el mismo proceso,
     // recuperar ticks atrasados genera más trabajo y más retraso (bola de nieve): mejor saltárselos
     maxCatchupTicks: (cfg.performance && cfg.performance.maxCatchupTicks) || 4,
+    // Los errores los registra setupBot con una línea. mineflayer los imprimía además enteros (con su pila): con el
+    // servidor reiniciándose eran decenas de líneas por minuto que echaban del registro los mensajes útiles
+    logErrors: false,
   }
 }
+
+// ── Reconexiones de uno en uno ──
+// Tras reiniciar el servidor los 6 bots volvían a la vez y el panel se bloqueaba varias veces (hasta 8,5 s) mientras
+// todos recibían el mundo a la vez. Cada reconexión espera al menos RECONNECT_GAP_MS a la anterior.
+const RECONNECT_GAP_MS = 4000
+let nextReconnectAt = 0
+function reconnectDelay(baseMs) {
+  const at = Math.max(Date.now() + baseMs, nextReconnectAt)
+  nextReconnectAt = at + RECONNECT_GAP_MS
+  return at - Date.now()
+}
+// Bots que no consiguen conectar porque el servidor no responde: solo se avisa al empezar y al volver
+const serverDown = new Set()
 
 /**
  * ctrl (opcional) lo usa el panel para controlar el bot: ctrl.enabled = false impide reconectar,
@@ -72,13 +88,15 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     if (reconnectScheduled || ctrl.enabled === false) return
     reconnectScheduled = true
     if (cfg.reconnect.enabled && typeof reconnectFn === 'function') {
-      console.log(`[${name}] 🔄 Reconectando en ${cfg.reconnect.delayMs / 1000}s...`)
-      setTimeout(() => { if (ctrl.enabled !== false) reconnectFn() }, cfg.reconnect.delayMs)
+      const wait = reconnectDelay(cfg.reconnect.delayMs)
+      if (!serverDown.has(botKey)) console.log(`[${name}] 🔄 Reconectando en ${Math.round(wait / 1000)}s...`)
+      setTimeout(() => { if (ctrl.enabled !== false) reconnectFn() }, wait)
     }
   }
 
   bot.once('spawn', () => {
     ctrl.issue = null
+    if (serverDown.delete(botKey)) console.log(`[${name}] 🔌 El servidor vuelve a responder: conectado.`)
     if (bot.pathfinder) {
       const mcData = bot.registry
       const movements = new Movements(bot, mcData)
@@ -89,7 +107,7 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
       movements.scafoldingBlocks = SCAFFOLD_ITEMS.map(n => mcData.itemsByName[n]?.id).filter(Boolean)
       // Bloques huecos por arriba (compostera, calderos): llegan a 1 de alto y el pathfinder cree que se pueden pisar,
       // pero el bot cae dentro y se queda encerrado (le pasó al Granjero con su compostera). Como las vallas: no se pisan
-      for (const name of HOLLOW_BLOCKS) { const b = mcData.blocksByName[name]; if (b) movements.fences.add(b.id) }
+      for (const blockName of HOLLOW_BLOCKS) { const b = mcData.blocksByName[blockName]; if (b) movements.fences.add(b.id) }
       // Lo que nunca se rompe para abrirse paso (de fábrica solo el cofre normal): talleres, almacén y sus carteles
       for (const b of mcData.blocksArray) if (KEEP_BLOCKS.includes(b.name) || /sign$/.test(b.name)) movements.blocksCantBreak.add(b.id)
       bot.pathfinder.setMovements(movements)
@@ -118,8 +136,18 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   })
 
   bot.on('error', (err) => {
-    console.error(`[${name}] ❌ Error: ${err.message}`)
-    ctrl.issue = err.message
+    const msg = err.message || err.code || String(err)
+    if (err.code === 'ECONNREFUSED') {
+      // El servidor está apagado o reiniciándose: avisar una vez y reintentar en silencio hasta que vuelva
+      ctrl.issue = 'El servidor no responde (¿apagado o reiniciándose?)'
+      if (!serverDown.has(botKey)) {
+        serverDown.add(botKey)
+        console.warn(`[${name}] 🔌 El servidor no responde (¿apagado o reiniciándose?): sigo intentándolo sin avisar más.`)
+      }
+    } else {
+      console.error(`[${name}] ❌ Error: ${msg}`)
+      ctrl.issue = msg
+    }
     // Si no se pudo conectar puede que no llegue 'end'; el guard evita reconexiones dobles
     if (['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(err.code)) scheduleReconnect()
   })
@@ -132,7 +160,7 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     stats.add(botKey, 'expulsiones')
   })
   bot.on('end', () => {
-    console.log(`[${name}] 🔌 Conexión finalizada.`)
+    if (!serverDown.has(botKey)) console.log(`[${name}] 🔌 Conexión finalizada.`)
     scheduleReconnect()
   })
 }
@@ -247,15 +275,20 @@ function trackGoto(bot, ok) {
   try { bot.quit() } catch {}
 }
 
-function safeGoto(bot, goal, minTimeoutSeconds = 25) {
-  return attemptGoto(bot, goal, minTimeoutSeconds).then(result => {
+/**
+ * opts.progressive (Minero): en vez de un plazo fijo, sigue mientras se acerque al objetivo o esté picando para
+ * abrirse paso, y se rinde si deja de avanzar opts.stallSeconds (12) o al llegar a opts.maxSeconds (90). Con el plazo
+ * fijo (15 s o 2 s por bloque) se rendía a medio camino al picar pizarra profunda (27 % del tiempo del Minero).
+ */
+function safeGoto(bot, goal, minTimeoutSeconds = 25, opts = {}) {
+  return attemptGoto(bot, goal, minTimeoutSeconds, opts).then(result => {
     if (result !== null) trackGoto(bot, result)
     return !!result
   })
 }
 
 // Devuelve true/false, o null si no llegó a intentarlo (bot parado u orden del panel pendiente)
-function attemptGoto(bot, goal, minTimeoutSeconds) {
+function attemptGoto(bot, goal, minTimeoutSeconds, opts = {}) {
   return new Promise((resolve) => {
     if (bot.stopped || !bot.entity) return resolve(null)
     // Hay una orden pendiente: abandonar la tarea actual para atenderla cuanto antes
@@ -266,37 +299,57 @@ function attemptGoto(bot, goal, minTimeoutSeconds) {
     let finished = false
     let timeoutMs = minTimeoutSeconds * 1000
 
-    if (goal) {
-      const gx = goal.x ?? goal.target?.x
-      const gy = goal.y ?? goal.target?.y
-      const gz = goal.z ?? goal.target?.z
-      if (gx !== undefined && gz !== undefined) {
-        const dist = bot.entity.position.distanceTo({ x: gx, y: gy ?? bot.entity.position.y, z: gz })
-        timeoutMs = Math.max(minTimeoutSeconds * 1000, Math.ceil(dist * 2000))
-      }
-    }
+    const gx = goal && (goal.x ?? goal.target?.x)
+    const gy = goal && (goal.y ?? goal.target?.y)
+    const gz = goal && (goal.z ?? goal.target?.z)
+    const goalDistance = () => (gx !== undefined && gz !== undefined && bot.entity)
+      ? bot.entity.position.distanceTo({ x: gx, y: gy ?? bot.entity.position.y, z: gz })
+      : null
+    if (goalDistance() !== null) timeoutMs = Math.max(minTimeoutSeconds * 1000, Math.ceil(goalDistance() * 2000))
 
-    const timer = setTimeout(() => {
-      if (!finished) {
-        finished = true
-        haltPathfinder(bot)
-        resolve(false)
-      }
-    }, timeoutMs)
+    let timer = null, watch = null, onDig = null
+    const finish = (value) => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      clearInterval(watch)
+      if (onDig) bot.removeListener('diggingCompleted', onDig)
+      resolve(value)
+    }
+    const giveUp = () => { if (!finished) { haltPathfinder(bot); finish(false) } }
+
+    if (opts.progressive) {
+      const start = Date.now()
+      const stallMs = (opts.stallSeconds || 12) * 1000
+      const maxMs = (opts.maxSeconds || 90) * 1000
+      let best = goalDistance()
+      let lastProgress = start
+      onDig = () => { lastProgress = Date.now() } // cada bloque picado para abrirse paso cuenta como avance
+      bot.on('diggingCompleted', onDig)
+      watch = setInterval(() => {
+        const d = goalDistance()
+        if (d !== null && (best === null || d < best - 0.5)) { best = d; lastProgress = Date.now() }
+        if (bot.targetDigBlock) lastProgress = Date.now() // picando ahora mismo
+        const now = Date.now()
+        if (now - lastProgress > stallMs || now - start > maxMs) giveUp()
+      }, 1000)
+    } else {
+      timer = setTimeout(giveUp, timeoutMs)
+    }
 
     try {
       bot.pathfinder.goto(goal)
         .then(() => {
           // goto() también "resuelve" cuando la ruta calculada está vacía, que puede significar
           // "no puedo moverme" (encerrado, sin herramienta). Solo cuenta si de verdad está en el objetivo.
-          if (!finished) { finished = true; clearTimeout(timer); resolve(isAtGoal(bot, goal)) }
+          finish(isAtGoal(bot, goal))
         })
         .catch(() => {
           // Cortada por una orden del panel: no es un fallo de la ruta
-          if (!finished) { finished = true; clearTimeout(timer); resolve(bot.pendingCommand ? null : false) }
+          finish(bot.pendingCommand ? null : false)
         })
     } catch (e) {
-      if (!finished) { finished = true; clearTimeout(timer); resolve(false) }
+      finish(false)
     }
   })
 }
@@ -638,6 +691,7 @@ async function returnHomeAndDeposit(bot, keepItemNames = [], keepAmounts = {}) {
   }
 
   const workSpot = bot.entity.position.clone()
+  const workUnderground = isUnderground(bot)
   const far = !isNearHome(bot)
   if (far) console.log(`[${label}] 🎒 Inventario lleno. Volviendo a casa ${fmtPos(bot.home)} (a ${Math.round(distXZ(workSpot, bot.home))} bloques)...`)
 
@@ -650,10 +704,31 @@ async function returnHomeAndDeposit(bot, keepItemNames = [], keepAmounts = {}) {
   }
 
   if (far && homeCfg.returnToWorkSpot && !bot.stopped) {
+    const dist = Math.round(distXZ(bot.entity.position, workSpot))
+    // Lejos, o el sitio está bajo tierra (el Minero): volver con /tp justo donde estaba, en vez de minutos andando
+    if (stuckCfg.allowTeleport && (dist > teleportDistance() || (workUnderground && dist > 24))) {
+      console.log(`[${label}] 🌀 Vuelvo con /tp a donde trabajaba ${fmtPos(workSpot)} (a ${dist} bloques).`)
+      if (await teleportToSpot(bot, workSpot)) return result
+    }
     console.log(`[${label}] 🧭 Regresando a donde trabajaba ${fmtPos(workSpot)}...`)
     await travelTo(bot, workSpot, 3, homeCfg.maxTravelMinutes * 60 * 1000)
   }
   return result
+}
+
+// Más lejos de esto (en bloques) se va y se vuelve con /tp: caminar cientos de bloques, o salir de una cueva, costaba
+// hasta 3 minutos en cada sentido y cargaba chunks por el camino (config.js → home.teleportDistance; pestaña Ajustes)
+const teleportDistance = () => (cfg.home && cfg.home.teleportDistance) || 150
+
+/** /tp exactamente a una posición donde ya estuvo el bot (sus pies), no encima de un bloque como teleportTo. */
+async function teleportToSpot(bot, pos) {
+  if (!bot.entity) return false
+  await requestTeleport(bot, { x: pos.x, y: pos.y, z: pos.z })
+  if (!await waitUntil(() => bot.entity && bot.entity.position.distanceTo(pos) < 3, 4000)) return false
+  await waitUntil(() => bot.blockAt(pos.floored()) !== null, 5000) // chunks de destino cargados
+  await sleep(1000)
+  stats.add(bot.botKey, 'teletransportes')
+  return true
 }
 
 /**
@@ -664,6 +739,13 @@ async function reachHome(bot) {
   if (!bot.home) return false
   if (isNearHome(bot, 8)) return true
   stats.add(bot.botKey, 'viajes')
+  // Lejos, o bajo tierra: directamente con /tp (ver teleportDistance)
+  const dist = Math.round(distXZ(bot.entity.position, bot.home))
+  const underground = isUnderground(bot)
+  if (stuckCfg.allowTeleport && (dist > teleportDistance() || (underground && dist > 24))) {
+    console.log(`[${bot.label}] 🌀 Casa a ${dist} bloques${underground ? ' y estoy bajo tierra' : ''}: voy con /tp.`)
+    if (await teleportTo(bot, bot.home)) return true
+  }
   const start = Date.now()
   if (await travelTo(bot, bot.home, 2, homeCfg.maxTravelMinutes * 60 * 1000)) return true
   if (bot.stopped) return false
@@ -1134,6 +1216,12 @@ async function finishRescue(bot) {
   } else {
     console.warn(`[${bot.label}] ✅ Rescatado: en casa, pero no pude guardar todo (${result}). Sigo trabajando.`)
   }
+}
+
+// Bajo tierra de verdad (cuevas, minas): sin cielo encima y por debajo de y = 60. Solo sin cielo no basta: bajo el
+// techo de una casa o de la granja (el Granjero) también se cumple
+function isUnderground(bot) {
+  return !!bot.entity && bot.entity.position.y < 60 && !canSeeSky(bot)
 }
 
 // Sin bloques sólidos ni líquidos encima de la cabeza hasta el cielo (las hojas no cuentan)

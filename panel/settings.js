@@ -29,6 +29,8 @@ const SCHEMA = [
     help: 'Echa en una compostera junto a su casa las semillas que sobran (también las del almacén) y usa la harina de huesos para que los cultivos crezcan antes.' },
   { path: 'organizer.intervalMinutes', group: '🗂️ Organizador', label: 'Cada cuánto hace una ronda', type: 'int', min: 5, max: 120, unit: 'min',
     help: 'Recoge lo guardado en las casas de los demás y lo ordena en el almacén. Se aplica desde la próxima ronda.' },
+  { path: 'home.teleportDistance', group: '🏠 Todos los bots', label: 'Ir y volver de casa con /tp a partir de', type: 'int', min: 50, max: 2000, unit: 'bloques',
+    help: 'Más cerca, caminan; más lejos (o si están bajo tierra), se teletransportan a casa y de vuelta a donde trabajaban.' },
   { path: 'home.returnWhenFreeSlots', group: '🏠 Todos los bots', label: 'Volver a guardar cuando queden', type: 'int', min: 1, max: 12, unit: 'huecos libres',
     help: 'Con más huecos vuelven antes a casa (viajes más cortos pero más frecuentes).' },
   { path: 'serverRescue.enabled', group: '🆘 Rescate', label: 'Rescate desde el servidor', type: 'bool',

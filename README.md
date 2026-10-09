@@ -145,7 +145,8 @@ Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#
 
 ### ⚙️ Settings tab
 Change without restarting anything the woodcutter's, miner's and farmer's search radii, **which ores the miner
-looks for and in what order**, whether the farmer expands its farm and uses the composter, the organizer's interval, how many free slots
+looks for and in what order**, whether the farmer expands its farm and uses the composter, from what distance they go
+home by /tp, the organizer's interval, how many free slots
 the bots keep before going home, the server rescue and the Discord alerts. Changes are saved in
 `data/settings.json` and applied on top of `config.js`; «Restablecer» goes back to its value.
 
@@ -210,7 +211,9 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 - Bots only use **their own** chests, never random chests they come across.
 - **Going home:** woodcutter and miner return when their inventory is almost full (≤ 2 free slots); farmer
   and fisher once they have 16 items. They travel in 48-block legs even from hundreds of blocks away.
-  **If they can't walk home within 3 minutes, they use `/tp`.** After storing, they go back to where they were working.
+  **More than 150 blocks away (or underground) they go home and back with `/tp`** directly (`config.js` →
+  `home.teleportDistance`, or the ⚙️ Settings tab); closer, they walk, and if they can't make it within 3 minutes they
+  use `/tp`. After storing, they go back to exactly where they were working.
 - **Automatic chests:** when every home chest is full, the bot `/give`s itself a chest and places it next to
   the others, up to **15 per home**.
 - **What each bot keeps when storing:**
@@ -278,6 +281,8 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
   pickaxe (miner), hoe (farmer), and fishing rod (fisher). If one is missing it takes materials
   from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods),
   **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`.
+- **Only goes to the warehouse when what it needs is there:** with the BotHelper plugin it knows what each chest
+  holds (read every 30 s), so with nothing to smelt it doesn't travel, and otherwise it only opens those chests.
 - **Furnaces:** places **4 furnaces** next to its chest. When furnaces are free it takes **raw iron, gold and
   copper**, **raw meat and fish** and **potatoes** from the warehouse, with **coal** as fuel (or wood if there's
   no coal), and loads 64 at a time. The furnaces keep working while it crafts tools.
@@ -314,10 +319,10 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 | `server` | `host`, `port`, `version` (protocol Mineflayer uses; ViaBackwards translates), `viewDistance` (`short` by default) |
 | `performance` | `pathfinderTickMs` (20): max CPU per tick for path computation. Miner and woodcutter use 40 (`bots.<bot>.pathfinderTickMs`): with less they compute paths in fragments and hesitate at 1-block steps |
 | `panel` | `port` (3000), `autoStart` (start the bots when the panel opens) |
-| `reconnect` | `enabled`, `delayMs` |
+| `reconnect` | `enabled`, `delayMs` (after a server restart the bots come back one at a time, 4 s apart) |
 | `search` | Radii: `woodRadius` 96, `mineRadius` 64, `farmRadius` 48, `chestRadius` 48 |
 | `chest` | `enabled`, `position` (shared home for every bot) |
-| `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `chestRadius` 6, `autoChests`, `maxChests` 15 |
+| `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `teleportDistance` 150, `chestRadius` 6, `autoChests`, `maxChests` 15 |
 | `farm` | `autoCreate` (till next to water), `searchWaterRadius` |
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (unlimited), `inbox`, `protect`, `categories` |

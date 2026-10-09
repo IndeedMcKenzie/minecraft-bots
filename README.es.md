@@ -143,7 +143,8 @@ desde su misma dirección (`/bluemap/`), así que desde otro equipo no hace falt
 
 ### ⚙️ Pestaña Ajustes
 Cambia sin reiniciar nada los radios de búsqueda del Leñador, el Minero y el Granjero, **qué minerales busca el
-Minero y en qué orden**, si el Granjero amplía la granja y si usa la compostera, el intervalo del Organizador, cuántos huecos libres
+Minero y en qué orden**, si el Granjero amplía la granja y si usa la compostera, a partir de qué distancia van a casa
+con /tp, el intervalo del Organizador, cuántos huecos libres
 dejan antes de volver a guardar, el rescate desde el servidor y los avisos a Discord. Los cambios se guardan en
 `data/settings.json` y se aplican encima de `config.js`; «Restablecer» vuelve a su valor.
 
@@ -205,9 +206,10 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 - La **casa** es un cofre (o barril) más los cofres que haya **a 6 bloques** de él.
 - Prioridad para elegirla: `bots.<bot>.home` en config → `chest.position` → `data/home_<bot>.json` → cofre más cercano al aparecer.
 - Solo usan **sus** cofres, nunca cofres ajenos que encuentren por el camino.
-- **Vuelta a casa:** leñador y minero vuelven con el inventario casi lleno (≤ 2 huecos). Granjero y pescador
-  vuelven cuando juntan 16 objetos. Viajan por tramos de 48 bloques aunque estén a cientos de bloques.
-  **Si en 3 minutos no llegan caminando, usan `/tp`.** Tras guardar, vuelven al sitio donde estaban trabajando.
+- **Vuelta a casa:** leñador y minero vuelven con el inventario casi lleno (≤ 2 huecos); el granjero guarda
+  cuando junta 128 objetos de cosecha. **Si están a más de 150 bloques (o bajo tierra), van y vuelven con `/tp`**
+  directamente (`config.js` → `home.teleportDistance`, o en la pestaña ⚙️ Ajustes); más cerca caminan, por tramos
+  de 48 bloques, y si en 3 minutos no llegan usan `/tp`. Tras guardar, vuelven justo al sitio donde trabajaban.
 - **Cofres automáticos:** si todos los cofres de casa están llenos, el bot se da uno con `/give` y lo coloca
   al lado, hasta **15 por casa**.
 - **Reserva que se quedan al guardar:**
@@ -275,6 +277,8 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
   hacha (leñador), pico (minero), azada (granjero), y caña (pescador). Si falta alguna,
   saca materiales del almacén (**diamante**; si no hay, hierro o piedra; palos o madera para hacerlos; cuerda
   para las cañas), la **fabrica en una mesa de trabajo** y **la deja en el cofre de ese bot** con `/tp`.
+- **Solo va al almacén si hay lo que busca:** con el plugin BotHelper sabe qué tiene cada cofre (se lee cada 30 s),
+  así que si no hay nada que fundir no viaja, y si lo hay solo abre esos cofres.
 - **Hornos:** coloca **4 hornos** junto a su cofre. Cuando hay hornos libres, saca del almacén **hierro, oro y
   cobre en bruto**, **carne y pescado crudos** y **patatas**, con **carbón** como combustible (o madera si no
   hay), y mete lotes de 64. Los hornos trabajan solos mientras él fabrica herramientas.
@@ -311,10 +315,10 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 | `server` | `host`, `port`, `version` (protocolo que usa Mineflayer; ViaBackwards traduce), `viewDistance` (`short` por defecto) |
 | `performance` | `pathfinderTickMs` (20): CPU máxima por tick para calcular rutas. Minero y leñador usan 40 (`bots.<bot>.pathfinderTickMs`): con menos calculan rutas a trozos y se quedan «dudando» ante desniveles |
 | `panel` | `port` (3000), `autoStart` (iniciar bots al abrir el panel) |
-| `reconnect` | `enabled`, `delayMs` |
+| `reconnect` | `enabled`, `delayMs` (tras reiniciar el servidor, los bots vuelven de uno en uno, con 4 s entre cada uno) |
 | `search` | Radios: `woodRadius` 96, `mineRadius` 64, `farmRadius` 48, `chestRadius` 48 |
 | `chest` | `enabled`, `position` (casa común para todos) |
-| `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `chestRadius` 6, `autoChests`, `maxChests` 15 |
+| `home` | `returnWhenFreeSlots` 2, `returnToWorkSpot`, `maxTravelMinutes` 3, `teleportDistance` 150, `chestRadius` 6, `autoChests`, `maxChests` 15 |
 | `farm` | `autoCreate` (arar junto al agua), `searchWaterRadius` |
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (ilimitado), `inbox`, `protect`, `categories` |

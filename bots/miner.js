@@ -155,7 +155,8 @@ async function workLoop(bot) {
       console.log(`[Minero] 💎 Encontrado: ${oreBlock.name} en ${fmtPos(oreBlock.position)}`)
 
       // ── 7. Navegar de forma segura hasta el mineral ──────────
-      const reached = await safeGoto(bot, new GoalNear(oreBlock.position.x, oreBlock.position.y, oreBlock.position.z, 2), 15)
+      // Plazo por progreso: abrirse paso picando pizarra tarda, y con un plazo fijo se rendía a medio camino
+      const reached = await safeGoto(bot, new GoalNear(oreBlock.position.x, oreBlock.position.y, oreBlock.position.z, 2), 15, { progressive: true })
       if (!reached) {
         console.log('[Minero] ⚠️ Mineral inalcanzable temporalmente, buscando otro...')
         markBad(bot, oreBlock.position)

@@ -319,21 +319,26 @@ async function putFuelFor(bot, furnace, itemsToSmelt) {
 /** Trae del almacén material para los hornos libres y combustible suficiente. */
 async function fetchSmeltables(bot, idleFurnaces) {
   const got = await fetchFromWarehouse(bot, [
-    { test: isInput, max: idleFurnaces * sCfg.batchPerFurnace, cats: ['Minerales', 'Comida', 'Pesca', 'Cultivos'] },
+    // También "Varios": ahí acaba lo que el Organizador no pudo poner en su categoría (p. ej. carne cruda)
+    { test: isInput, max: idleFurnaces * sCfg.batchPerFurnace, cats: ['Minerales', 'Comida', 'Pesca', 'Cultivos', 'Varios'] },
   ], 'Artesano')
   const inputs = Object.entries(got).filter(([n]) => isInput(n)).reduce((a, [, n]) => a + n, 0)
   if (inputs === 0) {
     setIssue(bot, 'idle', 'info', 'Nada que fundir ni cocinar en el almacén')
-    console.log(`${TAG} 💤 No hay nada que fundir ni cocinar en el almacén.`)
-    await teleportTo(bot, bot.home)
+    // Solo al quedarse sin trabajo (antes salía cada 30 s)
+    if (!bot._idleSaid) console.log(`${TAG} 💤 No hay nada que fundir ni cocinar en el almacén.`)
+    bot._idleSaid = true
+    // Si no ha ido al almacén (el inventario en vivo dijo que no había nada) sigue en el taller: nada de /tp
+    if (bot.entity.position.distanceTo(bot.home) > 12) await teleportTo(bot, bot.home)
     return
   }
 
+  bot._idleSaid = false
   clearIssue(bot, 'idle')
   await ensureFuel(bot, countOf(bot, isInput))
   const summary = Object.entries(got).map(([n, c]) => `${n.replace(/_/g, ' ')} ×${c}`).join(' · ')
   console.log(`${TAG} 🏬 Traído del almacén para los hornos: ${summary}`)
-  await teleportTo(bot, bot.home)
+  if (bot.entity.position.distanceTo(bot.home) > 12) await teleportTo(bot, bot.home)
 }
 
 // ════════════════════════════════════════════════════════════
@@ -467,7 +472,9 @@ async function craftTool(bot, family) {
   // A veces el servidor rechaza en silencio los clics en la mesa (objetos del almacén con datos ocultos de
   // ViaVersion): no se gasta nada y no sale nada. Se reintenta; si sigue igual, se da la herramienta con /give.
   for (let attempt = 1; attempt <= CRAFT_ATTEMPTS && !made(); attempt++) {
-    if (!await craft(bot, itemName, table)) return null
+    // Si el crafteo da error (p. ej. "missing ingredient" tras un intento rechazado: la ventana queda desfasada) no
+    // seguir insistiendo: pasar al respaldo de /give de abajo, como cuando no da resultado
+    if (!await craft(bot, itemName, table)) break
     await waitUntil(made, 2500) // el servidor puede tardar en confirmar el resultado
     if (!made() && attempt < CRAFT_ATTEMPTS) {
       console.warn(`${TAG} El crafteo de ${itemName.replace(/_/g, ' ')} no dio resultado (antes: ${invBefore} · después: ${invText()}); reintento ${attempt}/${CRAFT_ATTEMPTS - 1}...`)

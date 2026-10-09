@@ -600,6 +600,10 @@ async function fetchSeedsFromWarehouse(bot) {
   console.log(n > 0 ? `[Granjero] 🏬 Traídas ${n} semillas del almacén para compostar.` : '[Granjero] 🏬 No pude sacar semillas del almacén.')
 }
 
+// Guarda la cosecha a partir de esta cantidad de excedente (o con el inventario casi lleno). Con 16 iba a casa cada
+// minuto y medio (53 viajes en 1,3 h): cada vez abría y cerraba cofres para muy poco
+const DEPOSIT_AT = 128
+
 // Guarda la cosecha conservando una reserva de semillas para replantar
 async function handleChestStorage(bot) {
   const totals = bot.inventory.items().reduce((acc, i) => {
@@ -609,8 +613,7 @@ async function handleChestStorage(bot) {
   const excess = Object.entries(totals)
     .reduce((acc, [name, count]) => acc + Math.max(0, count - (KEEP_AMOUNTS[name] || 0)), 0)
 
-  // La granja suele estar junto a casa, así que guarda en cuanto junta algo de cosecha
-  if (excess >= 16 || isInventoryFull(bot)) {
+  if (excess >= DEPOSIT_AT || isInventoryFull(bot)) {
     await returnHomeAndDeposit(bot, [], KEEP_AMOUNTS)
   }
 }
