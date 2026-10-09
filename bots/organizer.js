@@ -27,6 +27,7 @@ const {
   depositNoMerge,
   setIssue,
   idleSleep,
+  giveItem,
   requestTeleport,
   openWithTimeout,
   clearIssue,
@@ -748,7 +749,7 @@ async function giveSelf(bot, itemName, count = 1) {
     console.warn(`[Organizador] No puedo recibir ${itemName}: inventario lleno.`)
     return false
   }
-  bot.chat(`/give ${bot.username} ${itemName} ${Math.max(1, count)}`)
+  await giveItem(bot, itemName, Math.max(1, count))
   const ok = await waitUntil(has, 3000)
   if (!ok) console.warn(`[Organizador] No pude darme ${itemName} con /give. ¿Es OP? Ejecuta en la consola del servidor: op ${bot.username}`)
   return ok

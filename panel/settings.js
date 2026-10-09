@@ -25,6 +25,8 @@ const SCHEMA = [
     help: 'Cosecha y siembra hasta esta distancia. Más de 64 bloques quedaría fuera de lo que el Granjero ve.' },
   { path: 'farm.autoCreate', group: '🌾 Granjero', label: 'Ampliar la granja junto al agua', type: 'bool',
     help: 'Si tiene semillas, ara tierra nueva junto al agua dentro de su radio.' },
+  { path: 'farm.compost', group: '🌾 Granjero', label: 'Compostera: semillas sobrantes → harina de huesos', type: 'bool',
+    help: 'Echa en una compostera junto a su casa las semillas que sobran (también las del almacén) y usa la harina de huesos para que los cultivos crezcan antes.' },
   { path: 'organizer.intervalMinutes', group: '🗂️ Organizador', label: 'Cada cuánto hace una ronda', type: 'int', min: 5, max: 120, unit: 'min',
     help: 'Recoge lo guardado en las casas de los demás y lo ordena en el almacén. Se aplica desde la próxima ronda.' },
   { path: 'home.returnWhenFreeSlots', group: '🏠 Todos los bots', label: 'Volver a guardar cuando queden', type: 'int', min: 1, max: 12, unit: 'huecos libres',

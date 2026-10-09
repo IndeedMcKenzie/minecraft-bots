@@ -29,6 +29,7 @@ const {
   runPendingCommand,
   setIssue,
   idleSleep,
+  giveItem,
   openWithTimeout,
   clearIssue,
   sleep,
@@ -612,7 +613,7 @@ async function placeBlockAt(bot, spot, itemName) {
 // Se asegura de tener `count` unidades; si no, se las da con /give (requiere OP)
 async function giveSelf(bot, itemName, count) {
   if (countOf(bot, n => n === itemName) >= count) return true
-  bot.chat(`/give ${bot.username} ${itemName} ${count - countOf(bot, n => n === itemName)}`)
+  await giveItem(bot, itemName, count - countOf(bot, n => n === itemName))
   const ok = await waitUntil(() => countOf(bot, n => n === itemName) >= count, 3000)
   if (!ok) console.warn(`${TAG} No pude darme ${itemName} con /give. ¿Es OP? Ejecuta en la consola del servidor: op ${bot.username}`)
   return ok

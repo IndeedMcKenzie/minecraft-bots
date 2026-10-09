@@ -15,10 +15,26 @@ prefix: "Bot_"
 
 # Rendimiento
 performance:
-  # Los bots no hacen aparecer criaturas a su alrededor (como un espectador): menos entidades y menos lag
+  # Los bots no cuentan para el límite de criaturas (setAffectsSpawning). OJO: en Paper 26.2 esto NO impide que
+  # aparezcan a su alrededor (de eso se encarga cleanup.prevent-spawns) y SÍ impide que desaparezcan solas
   no-mob-spawning: true
   # Los bots no cuentan para dormir: puedes pasar la noche aunque ellos estén despiertos
   ignore-sleep: true
+  # El servidor carga alrededor de cada bot solo los chunks que el bot pide (su distancia de visión, que se fija
+  # en config.js del panel), no los de view-distance de server.properties: mucha menos memoria y disco
+  bot-view-distance: true
+
+# Criaturas alrededor de los bots: en Paper 26.2 aparecen a su alrededor (cientos por minuto) y, como los bots no
+# cuentan para que desaparezcan solas, se acumulaban por miles. Cada minuto se quitan los monstruos, murciélagos y
+# peces "desechables" (sin nombre, sin correa, no persistentes, no sacados con un cubo) que estén a más de `radius`
+# bloques de cualquier jugador real. Nunca toca animales de granja, aldeanos ni jefes, ni nada cerca de un jugador
+# (cerca de ti aparecen y desaparecen como siempre).
+cleanup:
+  enabled: true
+  radius: 128
+  # Además, no dejar que aparezcan (de forma natural o en patrullas) monstruos, murciélagos ni peces lejos de los
+  # jugadores reales: en Paper 26.2 aparecían cientos por minuto alrededor de los bots
+  prevent-spawns: true
 
 # Protección de los bots (sus herramientas se siguen gastando igual)
 protection:

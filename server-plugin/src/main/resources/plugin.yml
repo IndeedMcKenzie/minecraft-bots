@@ -1,5 +1,5 @@
 name: BotHelper
-version: 1.4.0
+version: 1.5.1
 main: dev.botsminecraft.bothelper.BotHelper
 api-version: "26.2"
 softdepend: [BlueMap]

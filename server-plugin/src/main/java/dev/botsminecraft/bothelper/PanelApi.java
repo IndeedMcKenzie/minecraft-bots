@@ -22,10 +22,14 @@ import org.bukkit.block.BlockState;
 import org.bukkit.block.Container;
 import org.bukkit.block.Sign;
 import org.bukkit.block.sign.Side;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.DoubleChestInventory;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -53,11 +57,19 @@ import java.util.logging.Level;
  *  GET  /status   → TPS, tiempo por tick, memoria, jugadores y entidades
  *  POST /chests   → { world, x, y, z, radius } → contenido de los cofres y barriles de esa zona
  *  POST /command  → { command } → ejecuta un comando como la consola y devuelve la respuesta
+ *  POST /botstart → { player, scale?, saturation? } → lo que antes hacía el bot con /attribute y /effect al aparecer
+ *  POST /give     → { player, item, count } → da objetos a un bot sin comando (no sale en el chat de los OP)
+ *  (y /events, /teleport, /find y /markers: ver cada método)
  */
 final class PanelApi {
     private static final Gson GSON = new Gson();
     private static final Set<Material> STORAGE = Set.of(Material.CHEST, Material.TRAPPED_CHEST, Material.BARREL);
     private static final BlockFace[] SIGN_FACES = { BlockFace.UP, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST };
+    // Tamaño máximo de un mensaje del panel (los recorridos del mapa y las búsquedas pasan de los 8 KB de antes)
+    private static final int MAX_BODY = 1 << 20;
+    // Lo que sabe hacer esta versión: el panel lo mira para usar cada cosa solo si existe
+    private static final List<String> FEATURES = List.of("find", "find-immature", "markers", "teleport-surface",
+        "botstart", "give", "bot-view-distance", "cleanup");
 
     private final BotHelper plugin;
     private final int port;
@@ -94,6 +106,8 @@ final class PanelApi {
         server.createContext("/events", ex -> handle(ex, "POST", this::events));
         server.createContext("/teleport", ex -> handle(ex, "POST", this::teleport));
         server.createContext("/markers", ex -> handle(ex, "POST", this::markers));
+        server.createContext("/botstart", ex -> handle(ex, "POST", this::botStart));
+        server.createContext("/give", ex -> handle(ex, "POST", this::give));
         // El hilo HTTP solo entrega la petición al carril de búsquedas y queda libre al momento
         server.createContext("/find", ex -> findLane.execute(() -> {
             try { handle(ex, "POST", this::find); } catch (IOException ignored) { }
@@ -125,7 +139,11 @@ final class PanelApi {
             }
             JsonObject body = new JsonObject();
             if (method.equals("POST")) {
-                byte[] raw = ex.getRequestBody().readNBytes(8192);
+                byte[] raw = ex.getRequestBody().readNBytes(MAX_BODY + 1);
+                if (raw.length > MAX_BODY) {
+                    send(ex, 413, Map.of("ok", false, "error", "Mensaje demasiado grande (máximo " + (MAX_BODY >> 10) + " KB)"));
+                    return;
+                }
                 if (raw.length > 0) body = JsonParser.parseString(new String(raw, StandardCharsets.UTF_8)).getAsJsonObject();
             }
             send(ex, 200, handler.run(body));
@@ -157,6 +175,8 @@ final class PanelApi {
     private Object status() throws Exception {
         return sync(() -> {
             Map<String, Object> out = new LinkedHashMap<>();
+            out.put("version", plugin.getPluginMeta().getVersion());
+            out.put("features", FEATURES);
             double[] tps = Bukkit.getTPS();
             out.put("tps", new double[] { round(tps[0]), round(tps[1]), round(tps[2]) });
             out.put("mspt", round(Bukkit.getAverageTickTime()));
@@ -168,6 +188,7 @@ final class PanelApi {
                 Map<String, Object> info = new LinkedHashMap<>(Map.of("name", p.getName(), "bot", plugin.isBot(p), "world", l.getWorld().getName(),
                     "x", l.getBlockX(), "y", l.getBlockY(), "z", l.getBlockZ(), "health", round(p.getHealth())));
                 if (plugin.isBot(p) && plugin.assist() != null) info.putAll(plugin.assist().info(p));
+                if (plugin.isBot(p)) info.put("viewDistance", p.getViewDistance());
                 players.add(info);
             }
             out.put("players", players);
@@ -297,6 +318,7 @@ final class PanelApi {
             body.has("minY") ? body.get("minY").getAsInt() : Integer.MIN_VALUE,
             body.has("maxY") ? body.get("maxY").getAsInt() : Integer.MAX_VALUE,
             body.has("mature") && body.get("mature").getAsBoolean(),
+            body.has("immature") && body.get("immature").getAsBoolean(),
             body.has("bottom") && body.get("bottom").getAsBoolean(),
             ground, exclude));
     }
@@ -346,6 +368,55 @@ final class PanelApi {
         MapMarkers m = plugin.markers();
         boolean ok = m != null && m.update(body);
         return Map.of("ok", ok, "bluemap", m != null && m.available());
+    }
+
+    // ── /botstart ────────────────────────────────────────────
+    // Al aparecer cada bot (también al reaparecer tras morir) el panel pide su escala y la saturación infinita.
+    // Antes lo hacía el bot con /attribute y /effect por el chat, que salían en el chat de los OP y en la consola.
+
+    private Object botStart(JsonObject body) throws Exception {
+        String name = body.get("player").getAsString();
+        Double scale = body.has("scale") && !body.get("scale").isJsonNull() ? body.get("scale").getAsDouble() : null;
+        boolean saturation = body.has("saturation") && body.get("saturation").getAsBoolean();
+        if (scale != null && (scale < 0.0625 || scale > 16)) return Map.of("ok", false, "error", "Escala fuera de rango");
+        return sync(() -> {
+            Player p = Bukkit.getPlayerExact(name);
+            if (p == null) return Map.of("ok", false, "error", name + " no está conectado");
+            if (!plugin.isBot(p)) return Map.of("ok", false, "error", "Solo para los bots");
+            if (scale != null) {
+                AttributeInstance a = p.getAttribute(Attribute.SCALE);
+                if (a != null) a.setBaseValue(scale);
+            }
+            // Sin partículas ni icono, como el /effect … infinite 0 true de antes
+            if (saturation) p.addPotionEffect(new PotionEffect(PotionEffectType.SATURATION, PotionEffect.INFINITE_DURATION, 0, true, false, false));
+            return Map.of("ok", true);
+        });
+    }
+
+    // ── /give ────────────────────────────────────────────────
+    // { player, item: "chest", count } → los objetos van al inventario del bot (lo que no quepa, a sus pies).
+    // Solo a los bots. Sin comando: no sale "[Bot: Gave …]" en el chat de los OP.
+
+    private Object give(JsonObject body) throws Exception {
+        String name = body.get("player").getAsString();
+        Material m = Material.matchMaterial(body.get("item").getAsString());
+        int count = Math.max(1, Math.min(body.has("count") ? body.get("count").getAsInt() : 1, 64 * 36));
+        if (m == null || !m.isItem() || m.isAir()) return Map.of("ok", false, "error", "Objeto desconocido: " + body.get("item").getAsString());
+        return sync(() -> {
+            Player p = Bukkit.getPlayerExact(name);
+            if (p == null) return Map.of("ok", false, "error", name + " no está conectado");
+            if (!plugin.isBot(p)) return Map.of("ok", false, "error", "Solo para los bots");
+            int left = count, dropped = 0;
+            while (left > 0) {
+                int n = Math.min(left, m.getMaxStackSize());
+                for (ItemStack over : p.getInventory().addItem(new ItemStack(m, n)).values()) {
+                    p.getWorld().dropItem(p.getLocation(), over);
+                    dropped += over.getAmount();
+                }
+                left -= n;
+            }
+            return Map.of("ok", true, "given", count, "dropped", dropped);
+        });
     }
 
     // ── /events (registro de diagnóstico) ─────────────────────

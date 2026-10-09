@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *  - El hilo de la petición recorre cada copia según llega y, en cuanto tiene suficientes resultados y los chunks
  *    que faltan están más lejos que el último que se quedaría, para: deja de pedir copias (no se copia todo el radio).
  *  - Los mismos filtros que aplicaría el bot (posiciones descartadas y zonas de atasco, suelo natural bajo un tronco,
- *    madurez de un cultivo) se aplican aquí, para no devolver candidatos que el bot tiraría.
+ *    cultivo maduro o sin madurar) se aplican aquí, para no devolver candidatos que el bot tiraría.
  *  - Plazo total MAX_WAIT_MS, menor que el del panel: si el servidor va lento, se rinde antes que el bot.
  * No carga chunks.
  */
@@ -49,7 +49,7 @@ final class BlockFinder {
      * hRadius: si es > 0, además como mucho a esa distancia en horizontal del centro (zona de trabajo del bot).
      */
     record Request(World world, int cx, int cy, int cz, int radius, int hRadius, Set<Material> types, int count,
-                   int minY, int maxY, boolean matureOnly, boolean bottomOnly, Set<Material> groundBelow,
+                   int minY, int maxY, boolean matureOnly, boolean immatureOnly, boolean bottomOnly, Set<Material> groundBelow,
                    List<double[]> exclude) { }
 
     private record ChunkRef(int x, int z, double minDist) { }
@@ -130,9 +130,14 @@ final class BlockFinder {
                     if (!r.types().contains(m)) continue;
                     double d2 = hd2 + (double) (y - r.cy()) * (y - r.cy());
                     if (d2 > r2) continue;
-                    if (r.matureOnly()) {
+                    // Cultivos maduros (para cosechar) o sin madurar (para la harina de huesos del Granjero)
+                    if (r.matureOnly() || r.immatureOnly()) {
                         BlockData bd = s.getBlockData(lx, y, lz);
-                        if (bd instanceof Ageable a && a.getAge() < a.getMaximumAge()) continue;
+                        if (bd instanceof Ageable a) {
+                            boolean mature = a.getAge() >= a.getMaximumAge();
+                            if (r.matureOnly() && !mature) continue;
+                            if (r.immatureOnly() && mature) continue;
+                        }
                     }
                     if (y > worldMin) {
                         Material below = s.getBlockType(lx, y - 1, lz);

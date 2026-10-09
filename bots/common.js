@@ -29,6 +29,9 @@ const SCAFFOLD_ITEMS = [
   'andesite', 'diorite', 'granite', 'tuff',
 ]
 const PICKAXES = ['netherite_pickaxe', 'diamond_pickaxe', 'iron_pickaxe', 'golden_pickaxe', 'stone_pickaxe', 'wooden_pickaxe']
+// Bloques huecos en los que un bot puede caer dentro (ver setupBot) y bloques de los talleres que nunca se rompen
+const HOLLOW_BLOCKS = ['composter', 'cauldron', 'water_cauldron', 'lava_cauldron', 'powder_snow_cauldron']
+const KEEP_BLOCKS = ['chest', 'trapped_chest', 'barrel', 'furnace', 'blast_furnace', 'smoker', 'crafting_table', 'composter', 'hopper']
 
 // Opciones de conexión comunes para mineflayer.createBot
 function botOptions(botKey) {
@@ -84,6 +87,11 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
       movements.allowParkour = false
       movements.allow1by1towers = false // solo se activan durante un rescate
       movements.scafoldingBlocks = SCAFFOLD_ITEMS.map(n => mcData.itemsByName[n]?.id).filter(Boolean)
+      // Bloques huecos por arriba (compostera, calderos): llegan a 1 de alto y el pathfinder cree que se pueden pisar,
+      // pero el bot cae dentro y se queda encerrado (le pasó al Granjero con su compostera). Como las vallas: no se pisan
+      for (const name of HOLLOW_BLOCKS) { const b = mcData.blocksByName[name]; if (b) movements.fences.add(b.id) }
+      // Lo que nunca se rompe para abrirse paso (de fábrica solo el cofre normal): talleres, almacén y sus carteles
+      for (const b of mcData.blocksArray) if (KEEP_BLOCKS.includes(b.name) || /sign$/.test(b.name)) movements.blocksCantBreak.add(b.id)
       bot.pathfinder.setMovements(movements)
       // Presupuesto de CPU por tick para calcular rutas (el cálculo de rutas es lo que más CPU gasta).
       // Los bots que recorren terreno difícil necesitan más: con poco, calculan rutas a trozos y "dudan".
@@ -97,13 +105,10 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     setTimeout(() => { if (!bot.stopped) initHome(bot) }, 2000)
   })
 
-  // Comandos de inicio (config.js → starterCommands) en cada aparición, también al reaparecer tras morir
+  // Escala, saturación y comandos de inicio (config.js → botStart y starterCommands) en cada aparición, también al
+  // reaparecer tras morir
   bot.on('spawn', () => {
-    if (!Array.isArray(cfg.starterCommands) || cfg.starterCommands.length === 0) return
-    setTimeout(() => {
-      if (bot.stopped) return
-      for (const cmd of cfg.starterCommands) bot.chat(cmd.replace('{username}', bot.username))
-    }, 3000)
+    setTimeout(() => { if (!bot.stopped) applyBotStart(bot).catch(() => {}) }, 3000)
   })
 
   bot.on('chat', (username, message) => handleChatCommand(bot, username, message))
@@ -130,6 +135,43 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     console.log(`[${name}] 🔌 Conexión finalizada.`)
     scheduleReconnect()
   })
+}
+
+/**
+ * Escala 0.9999 (arregla el salto de mineflayer en 1.21+) y saturación infinita (no necesitan comer). Con el plugin
+ * BotHelper 1.5 se aplican sin comandos (no salen en el chat de los OP); si no, con /attribute y /effect (requiere OP).
+ */
+async function applyBotStart(bot) {
+  const bs = cfg.botStart || {}
+  let viaPlugin = false
+  try {
+    const link = require('../panel/serverlink') // aquí: serverlink usa módulos que dependen de este archivo
+    if (link.hasFeature('botstart')) {
+      const r = await link.botStart(bot.username, { scale: bs.scale || null, saturation: !!bs.saturation })
+      viaPlugin = !!(r && r.ok)
+    }
+  } catch {}
+  if (bot.stopped) return
+  if (!viaPlugin) {
+    if (bs.scale) bot.chat(`/attribute ${bot.username} minecraft:scale base set ${bs.scale}`)
+    if (bs.saturation) bot.chat(`/effect give ${bot.username} minecraft:saturation infinite 0 true`)
+  }
+  for (const cmd of cfg.starterCommands || []) bot.chat(cmd.replace('{username}', bot.username))
+}
+
+/**
+ * Se da `count` unidades de `item`: con el plugin BotHelper 1.5 sin comando (no sale "[Bot: Gave …]" en el chat de
+ * los OP); si no está, con /give (el bot debe ser OP). No espera a que lleguen: quien lo llama mira el inventario.
+ */
+async function giveItem(bot, item, count = 1) {
+  try {
+    const link = require('../panel/serverlink')
+    if (link.hasFeature('give')) {
+      const r = await link.give(bot.username, item, count)
+      if (r && r.ok) return
+    }
+  } catch {}
+  bot.chat(`/give ${bot.username} ${item} ${count}`)
 }
 
 // ── Lista negra temporal de bloques (inalcanzables o que fallan) ──
@@ -773,7 +815,7 @@ async function placeNewChest(bot) {
   // 1. Conseguir el cofre
   let chestItem = bot.inventory.items().find(i => i.name === 'chest')
   if (!chestItem) {
-    bot.chat(`/give ${bot.username} chest 1`)
+    await giveItem(bot, 'chest', 1)
     await waitUntil(() => bot.inventory.items().some(i => i.name === 'chest'), 3000)
     chestItem = bot.inventory.items().find(i => i.name === 'chest')
     if (!chestItem) {
@@ -1268,7 +1310,7 @@ async function giveConfiguredItems(bot) {
   bot.on('message', onMessage)
   try {
     for (const g of gifts) {
-      bot.chat(`/give ${bot.username} ${g.item} ${g.count}`)
+      await giveItem(bot, g.item, g.count)
       await sleep(300)
     }
     await sleep(1500)
@@ -1379,6 +1421,7 @@ function fmtPos(p) {
 
 module.exports = {
   SCAFFOLD_ITEMS,
+  HOLLOW_BLOCKS,
   activeBots,
   depositNoMerge,
   teleportTo,
@@ -1386,7 +1429,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
-  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, serverFindBlocks,
+  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, serverFindBlocks, giveItem,
   getZone, setZone, inZone, goToZone, exploreZone,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos

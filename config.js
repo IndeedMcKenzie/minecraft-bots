@@ -93,18 +93,18 @@ module.exports = {
   farm: {
     autoCreate: true,    // Si no hay cultivos, busca agua y prepara la tierra
     searchWaterRadius: 48,
+    // Compostera junto a casa: las semillas que sobran (y las del almacén) se convierten en harina de huesos, que hace
+    // crecer al momento los cultivos poco crecidos
+    compost: true,
   },
 
-  // Fix de física de salto en Minecraft 1.21+ (bug conocido de mineflayer)
-  // Requiere que los bots tengan OP: ejecuta en consola del servidor:
-  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador
-  //   op Bot_Artesano
-  // Se ejecutan cada vez que un bot aparece (también al reaparecer tras morir)
-  starterCommands: [
-    '/attribute {username} minecraft:scale base set 0.9999',
-    // Sin hambre: los bots no necesitan comer (saturación infinita, sin partículas)
-    '/effect give {username} minecraft:saturation infinite 0 true',
-  ],
+  // Cada vez que un bot aparece (también al reaparecer tras morir): escala 0.9999 (arregla un fallo de las físicas de
+  // salto de mineflayer en 1.21+) y saturación infinita (así nunca necesita comer). Con el plugin BotHelper 1.5 se
+  // aplica sin comandos y no sale en el chat de los OP; sin él, con /attribute y /effect (los bots deben ser OP:
+  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Artesano)
+  botStart: { scale: 0.9999, saturation: true },
+  // Comandos extra que ejecuta cada bot al aparecer ({username} = su nombre). Estos sí salen en el chat de los OP
+  starterCommands: [],
 
   // Rescate de bots atascados (los que tienen stuckWatch: true)
   // 1º sube a la superficie (escaleras/torre y, si no, pilar manual) y vuelve a casa; 2º /tp a casa
@@ -168,7 +168,8 @@ module.exports = {
 
   // Bots disponibles (nombre en el servidor). home opcional: { x, y, z } de su cofre.
   // viewDistance por bot: chunks que pide al servidor (número, o 'tiny' 6 / 'short' 8 / 'normal' 10). Menos chunks =
-  // menos CPU y RAM en el panel y menos trabajo para el servidor. Debe cubrir lo que busca cada bot (1 chunk = 16 bloques):
+  // menos CPU y RAM en el panel y menos trabajo para el servidor (con el plugin BotHelper 1.5 el servidor también
+  // carga solo esa distancia alrededor del bot, no la view-distance de server.properties). Debe cubrir lo que busca cada bot (1 chunk = 16 bloques):
   // leñador 96 bloques → 6, minero 64 → 5, granjero 48 → 4, pescador 32 → 3; el organizador tiene que ver todo el
   // almacén (súbelo si el almacén pasa de ~80 bloques de radio).
   // give: lo que entrega el botón "Dar herramienta" del panel con /give (el bot debe ser OP).

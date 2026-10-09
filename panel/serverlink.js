@@ -113,6 +113,21 @@ async function teleport(player, target) {
   return call('/teleport', { player, ...target })
 }
 
+/** ¿La versión del plugin conectada sabe hacer `name`? (lista "features" de /status, desde el plugin 1.5) */
+function hasFeature(name) {
+  return !!(online && status && Array.isArray(status.features) && status.features.includes(name))
+}
+
+/** Escala y saturación de un bot al aparecer, sin comandos (plugin 1.5): opts { scale, saturation } */
+async function botStart(player, opts) {
+  return call('/botstart', { player, ...opts })
+}
+
+/** Da objetos a un bot sin comando (plugin 1.5): no sale "[Bot: Gave …]" en el chat de los OP. */
+async function give(player, item, count) {
+  return call('/give', { player, item, count })
+}
+
 /** Dibuja en BlueMap recorridos, casas y zonas de los bots (plugin 1.4). Devuelve { ok, bluemap }. */
 async function updateMapMarkers(bots) {
   return call('/markers', { bots })
@@ -131,6 +146,7 @@ function serverInfo() {
   if (!online || !status) return { online: false }
   return {
     online: true,
+    version: status.version || null,
     tps: status.tps,
     mspt: status.mspt,
     memory: status.memory,
@@ -147,4 +163,4 @@ function start() {
   setInterval(refreshChests, CHESTS_MS).unref()
 }
 
-module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo, findBlocks, updateMapMarkers }
+module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo, findBlocks, updateMapMarkers, hasFeature, botStart, give }

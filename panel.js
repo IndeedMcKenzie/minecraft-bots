@@ -297,8 +297,18 @@ function sampleTrails() {
   }
 }
 
+// Como mucho TRAIL_MAX_POINTS puntos por recorrido (repartidos, y siempre el último): el mapa no necesita más
+// detalle y el mensaje al plugin se queda pequeño
+const TRAIL_MAX_POINTS = 120
+function simplifyTrail(list) {
+  if (list.length <= TRAIL_MAX_POINTS) return list
+  const step = (list.length - 1) / (TRAIL_MAX_POINTS - 1)
+  return Array.from({ length: TRAIL_MAX_POINTS }, (_, i) => list[Math.round(i * step)])
+}
+
 // Manda al plugin lo que hay que dibujar en BlueMap (recorridos, casas y zonas)
-let mapMarkersWarned = false
+const MARKERS_WARN_MS = 30 * 60000 // si falla, avisarlo en el registro como mucho cada 30 min (no solo la primera vez)
+let mapMarkersWarnedAt = 0
 async function pushMapMarkers() {
   if (!serverlink.isOnline()) return
   const bots = BOT_DEFS.map(d => {
@@ -308,20 +318,20 @@ async function pushMapMarkers() {
       key: d.key,
       label: d.label,
       color: BOT_COLORS[d.key],
-      trail: trails[d.key].map(p => [p.x, p.y, p.z]),
+      trail: simplifyTrail(trails[d.key]).map(p => [p.x, p.y, p.z]),
       home: home ? [Math.floor(home.x), Math.floor(home.y), Math.floor(home.z)] : null,
       zone: ZONE_BOTS.includes(d.key) ? zoneOf(d.key) : null,
     }
   })
   try {
     const r = await serverlink.updateMapMarkers(bots)
-    if (!r.bluemap && !mapMarkersWarned) {
-      mapMarkersWarned = true
+    if (!r.bluemap && Date.now() - mapMarkersWarnedAt > MARKERS_WARN_MS) {
+      mapMarkersWarnedAt = Date.now()
       console.warn('[Panel] 🗺️ El plugin no puede dibujar en BlueMap (¿BlueMap sin cargar?)')
     }
   } catch (err) {
-    if (!mapMarkersWarned) {
-      mapMarkersWarned = true
+    if (Date.now() - mapMarkersWarnedAt > MARKERS_WARN_MS) {
+      mapMarkersWarnedAt = Date.now()
       console.warn(`[Panel] 🗺️ Recorridos en el mapa: el plugin no responde a /markers (hace falta BotHelper 1.4): ${err.message}`)
     }
   }

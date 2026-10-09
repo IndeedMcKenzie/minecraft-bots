@@ -143,7 +143,7 @@ desde su misma dirección (`/bluemap/`), así que desde otro equipo no hace falt
 
 ### ⚙️ Pestaña Ajustes
 Cambia sin reiniciar nada los radios de búsqueda del Leñador, el Minero y el Granjero, **qué minerales busca el
-Minero y en qué orden**, si el Granjero amplía la granja, el intervalo del Organizador, cuántos huecos libres
+Minero y en qué orden**, si el Granjero amplía la granja y si usa la compostera, el intervalo del Organizador, cuántos huecos libres
 dejan antes de volver a guardar, el rescate desde el servidor y los avisos a Discord. Los cambios se guardan en
 `data/settings.json` y se aplican encima de `config.js`; «Restablecer» vuelve a su valor.
 
@@ -163,7 +163,9 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 
 | | |
 |---|---|
-| ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor y **no cuentan para dormir** |
+| ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor y **no cuentan para dormir**. El servidor carga alrededor de cada bot **solo la distancia que pide** (`viewDistance` de `config.js`), no la `view-distance` de `server.properties`: con 6 bots, de ~3.000 chunks cargados a ~1.000 |
+| 🧹 Limpieza | Como los bots no cuentan para que los monstruos desaparezcan solos, se acumulaban por miles. Cada minuto se quitan los monstruos, murciélagos y peces **desechables** (sin nombre, sin correa, no persistentes, no sacados con cubo) que estén a más de 128 bloques de cualquier jugador real. Nunca toca animales, aldeanos ni jefes, ni nada cerca de ti |
+| 🤫 Sin comandos | La escala y la saturación de los bots al aparecer, y los objetos que se dan (cofres, hornos, herramientas…), los pone el plugin: no sale nada en tu chat de OP. Sin el plugin, los bots usan `/attribute`, `/effect` y `/give` |
 | 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
 | 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan** |
 | 🧱 Cofres | Los bots **no pueden poner bloques sólidos encima de un cofre** (un cofre tapado no se abre; en uno doble basta con una mitad) |
@@ -235,11 +237,16 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 - Siembra la tierra arada vacía y, con azada, **ara tierra nueva junto al agua**.
 - Sin semillas, rompe hierba para conseguirlas.
 - Si no hay nada que hacer, revisa cada 20 s en vez de cada 4 (ahorra CPU).
+- **Compostera:** coloca una junto a su casa y echa en ella las semillas que le sobran (las de trigo y remolacha,
+  por encima de su reserva para replantar); cuando no le quedan, se trae una tanda de las del almacén. Con la harina
+  de huesos que sale hace crecer al momento los cultivos poco crecidos. Así las semillas no llenan el almacén
+  (`config.js` → `farm.compost`, o en la pestaña ⚙️ Ajustes).
 
 ### 🎣 Pescador
 - Busca **agua abierta** (≥ 9 bloques de agua en 5×5) a 32 bloques de su casa y una orilla firme.
   Ignora canales de 1 bloque para no pisar cultivos.
-- Lanza y espera la picada. Si no pica en 45 s, recoge y vuelve a lanzar. Tras 3 fallos seguidos cambia de sitio.
+- Lanza y espera la picada. Si no pica en 45 s, recoge y vuelve a lanzar desde el mismo sitio (los peces no se
+  agotan); solo busca otra orilla si no puede llegar a la suya.
 - Guarda cada 16 capturas. Si se rompe la caña, saca otra del cofre (deja repuestos ahí).
 
 ### 🗂️ Organizador (almacén central)
@@ -314,7 +321,9 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 | `fishing` | `searchRadius` 32 |
 | `smelter` (Artesano, hornos) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (qué funde/cocina), `fuels` |
 | `smith` (Artesano, herramientas) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (herramienta de cada bot), `tiers` (diamante > hierro > piedra) |
-| `starterCommands` | Comandos al conectarse (ajuste de escala para las físicas de salto en 1.21+, requiere OP) |
+| `botStart` | Al aparecer: `scale` 0.9999 (arregla las físicas de salto de mineflayer en 1.21+) y `saturation` (no necesitan comer). Con el plugin, sin comandos |
+| `starterCommands` | Comandos extra que ejecuta cada bot al aparecer (salen en el chat de los OP) |
+| `farm` | `autoCreate` (arar junto al agua), `searchWaterRadius`, `compost` (compostera) |
 | `bots.<bot>` | `username`, `home` (`{x,y,z}` fija), `stuckWatch`, `give` (lo que entrega 🎁), `viewDistance`, `autoHome`, `pathfinderTickMs` |
 
 ---
@@ -322,7 +331,7 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 ## 📌 Cosas a saber
 
 - **Sin hambre:** cada vez que un bot aparece (también al reaparecer tras morir) se da **Saturación** infinita
-  (`config.js` → `starterCommands`), así que nunca necesita comer. Con `keepInventory` activado, morir no le quita nada.
+  (`config.js` → `botStart`), así que nunca necesita comer. Con `keepInventory` activado, morir no le quita nada.
 - **OP y modo offline:** los bots necesitan OP para `/tp`, `/give`, `/summon` y las físicas. En modo offline,
   cualquiera que use el nombre de un bot hereda su OP. En servidores con más gente, usa un plugin de login
   (contraseña) o cambia los nombres de los bots en `config.js`.

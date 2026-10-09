@@ -145,7 +145,7 @@ Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#
 
 ### ⚙️ Settings tab
 Change without restarting anything the woodcutter's, miner's and farmer's search radii, **which ores the miner
-looks for and in what order**, whether the farmer expands its farm, the organizer's interval, how many free slots
+looks for and in what order**, whether the farmer expands its farm and uses the composter, the organizer's interval, how many free slots
 the bots keep before going home, the server rescue and the Discord alerts. Changes are saved in
 `data/settings.json` and applied on top of `config.js`; «Restablecer» goes back to its value.
 
@@ -174,6 +174,9 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 | 🔇 Silence | No **join, leave, death or advancement** messages for bots in chat |
 | 🧲 Magnet | Whatever a block broken by a bot drops **appears at its feet** |
 | 🗺️ Map | Draws on **BlueMap** (if installed) each bot's path over the last hour, its home and its work zone |
+| ⚡ Chunks | The server loads around each bot **only the distance it asks for** (`viewDistance` in `config.js`), not `server.properties`' `view-distance`: with 6 bots, from ~3,000 loaded chunks to ~1,000 |
+| 🧹 Cleanup | Since bots don't count for monsters despawning, they piled up by the thousands. Every minute, **disposable** monsters, bats and fish (unnamed, unleashed, not persistent, not from a bucket) more than 128 blocks from any real player are removed. Animals, villagers, bosses and anything near you are never touched |
+| 🤫 No commands | The bots' scale and saturation on spawn, and the items they give themselves (chests, furnaces, tools…), are applied by the plugin: nothing shows up in your OP chat. Without the plugin the bots use `/attribute`, `/effect` and `/give` |
 | 🔍 Searches | The **server** finds ores, logs and ripe crops for the miner, woodcutter and farmer (on another thread, without loading chunks, at most 2 ms per tick). The panel used to do it and froze for seconds; without the plugin each bot searches as before |
 | 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console**; **diagnostic log** of what the bots do |
 
@@ -237,11 +240,15 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 - Sows empty farmland and, with a hoe, **tills new land next to water**.
 - With no seeds, breaks grass to get some.
 - When there's nothing to do it checks every 20 s instead of every 4 s (saves CPU).
+- **Composter:** it places one next to its home and fills it with its spare seeds (wheat and beetroot, beyond what it
+  keeps for replanting); when it runs out it fetches a batch from the warehouse. The bone meal it gets makes young
+  crops grow instantly, and seeds no longer fill the warehouse (`config.js` → `farm.compost`, or the ⚙️ Settings tab).
 
 ### 🎣 Fisher
 - Looks for **open water** (≥ 9 water blocks in a 5×5 area) within 32 blocks of home and a solid shore.
   It ignores 1-block channels so it won't trample crops.
-- Casts and waits for a bite; after 45 s without one it reels in and casts again. After 3 misses in a row it moves.
+- Casts and waits for a bite; after 45 s without one it reels in and casts again from the same spot (fish never run
+  out); it only looks for another shore if it can't reach its own.
 - Stores every 16 catches. When the rod breaks it takes a spare from the chest (leave some there).
 
 ### 🗂️ Organizer (central warehouse)
@@ -317,7 +324,9 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 | `fishing` | `searchRadius` 32 |
 | `smelter` (Artisan, furnaces) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (what to smelt/cook), `fuels` |
 | `smith` (Artisan, tools) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (each bot's tool), `tiers` (diamond > iron > stone) |
-| `starterCommands` | Commands run on join (scale tweak for 1.21+ jump physics, needs OP) |
+| `botStart` | On spawn: `scale` 0.9999 (fixes mineflayer's jump physics in 1.21+) and `saturation` (no need to eat). With the plugin, no commands |
+| `starterCommands` | Extra commands each bot runs on spawn (they show up in the OP chat) |
+| `farm` | `autoCreate` (till next to water), `searchWaterRadius`, `compost` (composter) |
 | `bots.<bot>` | `username`, `home` (fixed `{x,y,z}`), `stuckWatch`, `give` (what 🎁 hands out), `viewDistance`, `autoHome`, `pathfinderTickMs` |
 
 ---
@@ -325,7 +334,7 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 ## 📌 Good to know
 
 - **No hunger:** every time a bot spawns (also after dying) it gives itself infinite **Saturation**
-  (`config.js` → `starterCommands`), so it never needs to eat. With `keepInventory` on, a death costs nothing.
+  (`config.js` → `botStart`), so it never needs to eat. With `keepInventory` on, a death costs nothing.
 - **OP & offline mode:** the bots need OP for `/tp`, `/give`, `/summon` and the physics fix. In offline mode,
   anyone using a bot's name inherits its OP. On shared servers, use a login (password) plugin or change the
   bot usernames in `config.js`.

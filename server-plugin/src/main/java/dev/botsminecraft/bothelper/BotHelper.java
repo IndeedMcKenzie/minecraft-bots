@@ -1,5 +1,6 @@
 package dev.botsminecraft.bothelper;
 
+import com.destroystokyo.paper.event.player.PlayerClientOptionsChangeEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -31,7 +32,9 @@ import java.util.Set;
 
 /**
  * BotHelper: ayuda a los bots de Mineflayer desde dentro del servidor.
- * - Rendimiento: los bots no hacen aparecer criaturas y no cuentan para dormir.
+ * - Rendimiento: los bots no hacen aparecer criaturas, no cuentan para dormir y el servidor solo carga a su alrededor
+ *   los chunks que piden (su distancia de visión). Las criaturas que se acumulan lejos de jugadores reales se limpian
+ *   (ver {@link MobCleanup}).
  * - Protección: sin daño de monstruos ni de caída, y los monstruos no los persiguen.
  * - Conexión con el panel (ver {@link PanelApi}): estado del servidor, contenido de cofres y consola.
  */
@@ -39,11 +42,12 @@ public final class BotHelper extends JavaPlugin implements Listener {
 
     private final Set<String> bots = new HashSet<>();
     private String prefix = "";
-    private boolean noMobSpawning, ignoreSleep, noMonsterDamage, noFallDamage, noMonsterTarget, deliverCatch;
+    private boolean noMobSpawning, ignoreSleep, botViewDistance, noMonsterDamage, noFallDamage, noMonsterTarget, deliverCatch;
     private PanelApi api;
     private DebugLog debug;
     private BotAssist assist;
     private MapMarkers markers;
+    private MobCleanup cleanup;
 
     @Override
     public void onEnable() {
@@ -57,6 +61,9 @@ public final class BotHelper extends JavaPlugin implements Listener {
         // Recorridos, casas y zonas de los bots en BlueMap (si está instalado: se carga antes por softdepend)
         markers = new MapMarkers(this);
         markers.start();
+        cleanup = new MobCleanup(this);
+        cleanup.start();
+        getServer().getPluginManager().registerEvents(cleanup, this);
         startApi();
     }
 
@@ -74,6 +81,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
         prefix = c.getString("prefix", "");
         noMobSpawning = c.getBoolean("performance.no-mob-spawning", true);
         ignoreSleep = c.getBoolean("performance.ignore-sleep", true);
+        botViewDistance = c.getBoolean("performance.bot-view-distance", true);
         noMonsterDamage = c.getBoolean("protection.no-monster-damage", true);
         noFallDamage = c.getBoolean("protection.no-fall-damage", true);
         noMonsterTarget = c.getBoolean("protection.no-monster-target", true);
@@ -128,6 +136,22 @@ public final class BotHelper extends JavaPlugin implements Listener {
     private void applyTo(Player p) {
         if (noMobSpawning) p.setAffectsSpawning(false);
         if (ignoreSleep) p.setSleepingIgnored(true);
+        applyViewDistance(p, p.getClientViewDistance());
+    }
+
+    /**
+     * La distancia de visión que pide el cliente solo limita lo que el servidor le ENVÍA: Paper carga igualmente
+     * view-distance (server.properties) alrededor de cada jugador. Con 6 bots eran ~3.500 chunks cargados para
+     * nada; con la distancia que pide cada bot (config.js del panel) son unos 700.
+     */
+    private void applyViewDistance(Player p, int requested) {
+        if (!botViewDistance || requested <= 0 || !p.isOnline()) return;
+        int vd = Math.max(2, Math.min(requested, Bukkit.getViewDistance()));
+        try {
+            if (p.getViewDistance() != vd) p.setViewDistance(vd);
+        } catch (Throwable t) {
+            getLogger().warning("No pude fijar la distancia de visión de " + p.getName() + ": " + t);
+        }
     }
 
     // ── Eventos ──────────────────────────────────────────────
@@ -136,6 +160,15 @@ public final class BotHelper extends JavaPlugin implements Listener {
     public void onJoin(PlayerJoinEvent e) {
         Player p = e.getPlayer();
         if (isBot(p)) Bukkit.getScheduler().runTask(this, () -> { if (p.isOnline()) applyTo(p); });
+    }
+
+    // Si el bot cambia su distancia de visión (al reconectar con otro valor), seguirla
+    @EventHandler
+    public void onClientOptions(PlayerClientOptionsChangeEvent e) {
+        Player p = e.getPlayer();
+        if (!isBot(p) || !e.hasViewDistanceChanged()) return;
+        int requested = e.getViewDistance();
+        Bukkit.getScheduler().runTask(this, () -> applyViewDistance(p, requested));
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -197,6 +230,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
             stopApi();
             loadSettings();
             if (assist != null) assist.reload();
+            if (cleanup != null) cleanup.reload();
             startApi();
             sender.sendMessage("BotHelper recargado.");
             return true;
@@ -204,6 +238,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
         long online = Bukkit.getOnlinePlayers().stream().filter(this::isBot).count();
         sender.sendMessage("BotHelper: " + online + " bots conectados · sin spawns " + onOff(noMobSpawning)
             + " · ignoran el sueño " + onOff(ignoreSleep) + " · protección " + onOff(noMonsterDamage || noFallDamage)
+            + " · distancia por bot " + onOff(botViewDistance) + " · limpieza " + onOff(getConfig().getBoolean("cleanup.enabled", true))
             + " · panel " + (api != null ? "conectado" : "apagado") + " · diagnóstico " + onOff(debug.isEnabled()));
         return true;
     }
