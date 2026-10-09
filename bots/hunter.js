@@ -8,6 +8,8 @@
 //   · 🔄 automático: sigue al jugador mientras está conectado; si no, explora
 //  Con el plugin BotHelper 1.6 lo que sueltan los monstruos le llega directo al inventario y a su alrededor aparecen
 //  monstruos como alrededor de un jugador (alrededor de los demás bots, no). Lo guarda en casa; el Organizador lo ordena.
+//  Con el 1.7 los monstruos le atacan de verdad (a los demás bots no): lleva armadura de diamante, la saturación infinita
+//  le cura (1 corazón por segundo) y con poca vida se retira a casa a curarse.
 // ============================================================
 const mineflayer = require('mineflayer')
 const { pathfinder, goals: { GoalFollow, GoalNear, GoalNearXZ } } = require('mineflayer-pathfinder')
@@ -55,7 +57,9 @@ const PREY_ES = {
   phantom: 'phantom', pillager: 'saqueador', vindicator: 'vindicador', evoker: 'invocador', vex: 'vex',
   silverfish: 'lepisma', endermite: 'endermite', blaze: 'blaze', zoglin: 'zoglin', breeze: 'breeze',
 }
-const preyName = n => PREY_ES[n] || String(n).replace(/_/g, ' ')
+// Los que también pueden atacarle sin ser presas (si le atacan, se defiende)
+const OTHER_ES = { enderman: 'enderman', zombified_piglin: 'piglin zombi', piglin: 'piglin', piglin_brute: 'piglin bruto', hoglin: 'hoglin' }
+const preyName = n => PREY_ES[n] || OTHER_ES[n] || String(n).replace(/_/g, ' ')
 
 // Botín más habitual, para el registro
 const LOOT_ES = {
@@ -69,8 +73,18 @@ const LOOT_ES = {
 }
 
 const SWORDS = ['netherite_sword', 'diamond_sword', 'iron_sword', 'golden_sword', 'stone_sword', 'wooden_sword']
-// Al guardar se queda una espada de cada tipo, el arco y unas flechas
-const KEEP_AMOUNTS = Object.fromEntries([...SWORDS.map(s => [s, 1]), ['bow', 1], ['arrow', 192]])
+// Armadura de diamante (o de netherita si algún día tiene): si le falta o se le rompe una pieza, se la da con /give
+const ARMOR = [
+  { dest: 'head', item: 'diamond_helmet', es: 'casco', ok: /^(diamond|netherite)_helmet$/ },
+  { dest: 'torso', item: 'diamond_chestplate', es: 'peto', ok: /^(diamond|netherite)_chestplate$/ },
+  { dest: 'legs', item: 'diamond_leggings', es: 'grebas', ok: /^(diamond|netherite)_leggings$/ },
+  { dest: 'feet', item: 'diamond_boots', es: 'botas', ok: /^(diamond|netherite)_boots$/ },
+]
+// Al guardar se queda una espada de cada tipo, el arco, unas flechas y (si no la lleva puesta) la armadura
+const KEEP_AMOUNTS = Object.fromEntries([
+  ...SWORDS.map(s => [s, 1]), ['bow', 1], ['arrow', 192],
+  ...ARMOR.flatMap(a => [[a.item, 1], [a.item.replace('diamond', 'netherite'), 1]]),
+])
 
 const MELEE_REACH = 3          // golpe: hasta 3 bloques desde los ojos hasta el cuerpo del monstruo (como un jugador)
 const SWORD_COOLDOWN_MS = 650  // la espada recarga en 0,625 s: antes, el golpe hace mucho menos daño
@@ -87,6 +101,10 @@ const FOLLOW_TP_DISTANCE = 32  // más lejos (o fuera de su vista), se teletrans
 const FOLLOW_TP_GAP_MS = 4000
 const EXPLORE_STEP = 28        // largo de cada tramo al explorar
 const ARROWS_LOW = 16, ARROWS_GIVE = 64, ARROWS_GIVE_GAP_MS = 2 * 60 * 1000
+const ARMOR_GIVE_GAP_MS = 2 * 60 * 1000 // como mucho una pieza de armadura de cada tipo cada 2 min
+const LOW_HEALTH = 6   // con 3 corazones o menos deja la pelea y se va a casa a curarse…
+const HEALED = 16      // …y vuelve con 8 (con la saturación infinita se cura 1 corazón por segundo)
+const ATTACKER_MS = 30000 // lo que le atacó cuenta como presa este rato (aunque no sea de las que caza)
 // Lo que no frena una flecha (el resto de entidades que no son presas sí cuentan como "alguien en medio")
 const ARROW_PASSES = new Set([
   'item', 'experience_orb', 'arrow', 'spectral_arrow', 'trident', 'snowball', 'egg', 'ender_pearl', 'potion',
@@ -143,6 +161,9 @@ async function workLoop(bot) {
       if (await runPendingCommand(bot)) { bot._followGoalEntity = null; continue }
       if (!bot.entity) { await sleep(1000); continue }
       pruneMemory(bot)
+
+      // Con poca vida, a curarse antes que nada (los monstruos le atacan de verdad)
+      if (bot._healing) { await healStep(bot); continue }
 
       // 1. Espada, arco y flechas
       await ensureGear(bot)
@@ -448,6 +469,19 @@ function isPrey(e) {
   return true
 }
 
+/**
+ * ¿Le ha atacado hace poco? Entonces se defiende aunque no sea de los que caza (un enderman, un piglin zombi…). Nunca
+ * contra jugadores, animales (una mascota) ni gólems, nada con nombre, ni el warden (imposible: se retira a curarse).
+ */
+function isAttacker(bot, e) {
+  const t = e && bot._attackers.get(e.id)
+  if (!t || Date.now() - t > ATTACKER_MS || !e.position) return false
+  if (!['hostile', 'mob'].includes(e.type) || ['iron_golem', 'snow_golem', 'warden'].includes(e.name)) return false
+  return !(e.metadata && e.metadata[2])
+}
+
+const isTarget = (bot, e) => isPrey(e) || isAttacker(bot, e)
+
 function alive(bot, e) {
   if (!e || bot.entities[e.id] !== e || e.isValid === false || bot._dead.has(e.id)) return false
   const hp = e.metadata && e.metadata[9] // vida (LivingEntity)
@@ -463,7 +497,7 @@ function findPrey(bot, plan) {
   const anchor = plan.anchor()
   let best = null, bestScore = Infinity
   for (const e of Object.values(bot.entities)) {
-    if (!isPrey(e) || !alive(bot, e)) continue
+    if (!isTarget(bot, e) || !alive(bot, e)) continue
     const until = bot._ignore.get(e.id)
     if (until && until > now) continue
     const d = e.position.distanceTo(me)
@@ -531,6 +565,8 @@ async function fight(bot, target, plan) {
       bot._lastPreyAt = now
       trackTarget(bot, target)
       if (now - startedAt > FIGHT_MAX_MS) { ignore(bot, target); break }
+      // Con poca vida, a curarse (salvo si ya se está curando: entonces se defiende de lo que tenga encima)
+      if (bot.health <= LOW_HEALTH && !bot._healing) { startHealing(bot); break }
 
       // No alejarse por perseguirlo: del jugador (o de casa) cuando protege, del punto de partida cuando explora
       if (plan.mode === 'explore') {
@@ -696,7 +732,7 @@ function shotIsClear(bot, aim, target) {
   const { src, yaw, pitch } = aim
   const goal = distXZ(src, aim.point) - (target.width || 0.6) / 2
   const others = Object.values(bot.entities).filter(e => e !== bot.entity && e !== target && e.position &&
-    !isPrey(e) && !ARROW_PASSES.has(e.name) && e.position.distanceTo(src) < goal + 4)
+    !isTarget(bot, e) && !ARROW_PASSES.has(e.name) && e.position.distanceTo(src) < goal + 4)
   let pos = src.clone()
   let vel = new Vec3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)).scaled(ARROW_SPEED)
   for (let t = 0; t < 100; t++) {
@@ -741,16 +777,24 @@ function velocityOf(bot, e) {
 
 /**
  * Golpes y presas: el servidor avisa de cada daño con quién lo causó (también de los flechazos: el causante es quien
- * disparó) y de cada muerte. Una presa que muere poco después de un golpe o flechazo suyo cuenta como cazada.
+ * disparó) y de cada muerte. Una presa que muere poco después de un golpe o flechazo suyo cuenta como cazada, y lo que
+ * le hace daño a él pasa a ser presa durante un rato (se defiende).
  */
 function trackCombat(bot) {
   bot._hits = new Map()   // id → { t, by: 'espada' | 'arco' }
   bot._ignore = new Map() // id → hasta cuándo no perseguirlo
   bot._track = new Map()  // id → posiciones recientes
   bot._dead = new Set()
+  bot._attackers = new Map() // id → cuándo le atacó
 
   bot.on('entityHurt', (e, source) => {
-    if (!e || !source || !bot.entity || source.id !== bot.entity.id || !PREY_ES[e.name]) return
+    if (!e || !source || !bot.entity) return
+    // Algo le ha hecho daño (el causante de un flechazo es quien disparó): se defenderá de ello
+    if (e === bot.entity) {
+      if (source !== bot.entity && source.type !== 'player') bot._attackers.set(source.id, Date.now())
+      return
+    }
+    if (source.id !== bot.entity.id || !isTarget(bot, e)) return
     const melee = Date.now() - (bot._lastSwingAt || 0) < 500
     bot._hits.set(e.id, { t: Date.now(), by: melee ? 'espada' : 'arco' })
     bot._lastHitOn = e.id
@@ -759,7 +803,7 @@ function trackCombat(bot) {
   })
 
   bot.on('entityDead', (e) => {
-    if (!e || !PREY_ES[e.name]) return
+    if (!e || !(PREY_ES[e.name] || bot._attackers.has(e.id))) return
     bot._dead.add(e.id)
     let hit = bot._hits.get(e.id)
     if (hit && Date.now() - hit.t > 5000) hit = null
@@ -807,6 +851,41 @@ function pruneMemory(bot) {
   for (const [id, h] of bot._hits) if (now - h.t > 60000) bot._hits.delete(id)
   for (const id of bot._track.keys()) if (!bot.entities[id]) bot._track.delete(id)
   for (const id of bot._dead) if (!bot.entities[id]) bot._dead.delete(id)
+  for (const [id, t] of bot._attackers) if (now - t > ATTACKER_MS) bot._attackers.delete(id)
+}
+
+// ════════════════════════════════════════════════════════════
+//  CURARSE
+// ════════════════════════════════════════════════════════════
+function startHealing(bot) {
+  bot._healing = true
+  haltPathfinder(bot)
+  console.log(`${TAG} 🩹 Me quedan ${(Math.max(0, bot.health) / 2).toFixed(1)} corazones: me retiro a casa a curarme.`)
+  stats.add(KEY, 'retiradas')
+}
+
+/**
+ * Retirado a curarse: a casa con /tp (lejos de lo que le atacaba) y esperar a tener HEALED de vida. La saturación
+ * infinita le cura 1 corazón por segundo. Allí solo se defiende de lo que tenga encima.
+ */
+async function healStep(bot) {
+  bot.huntState = `🩹 Curándose (${Math.round(bot.health)}/20)`
+  if (bot.health >= HEALED) {
+    bot._healing = false
+    console.log(`${TAG} 💪 Curado (${(bot.health / 2).toFixed(1)} corazones): vuelvo a cazar.`)
+    return
+  }
+  if (bot.home && bot.entity.position.distanceTo(bot.home) > 12) {
+    await teleportTo(bot, bot.home)
+    return
+  }
+  const near = findPrey(bot, { mode: 'heal', radius: 4, anchor: () => bot.entity.position })
+  if (near && reachDistance(bot, near) <= 4) {
+    await fight(bot, near, { mode: 'heal', radius: 6, anchor: () => bot.entity.position })
+    return
+  }
+  await holdSword(bot)
+  await sleep(1000)
 }
 
 // ════════════════════════════════════════════════════════════
@@ -814,6 +893,7 @@ function pruneMemory(bot) {
 // ════════════════════════════════════════════════════════════
 async function ensureGear(bot) {
   const h = hunterCfg()
+  await ensureArmor(bot)
   // Sin espada o sin arco: a casa a por el repuesto que deja el Artesano (como mucho un viaje cada 10 min)
   if (bot.home && !bestSword(bot)) await withdrawToolsFromChest(bot, SWORDS, { travel: true })
   if (bot.home && h.useBow !== false && !hasItem(bot, 'bow')) await withdrawToolsFromChest(bot, ['bow'], { travel: true })
@@ -830,6 +910,37 @@ async function ensureGear(bot) {
     console.log(`${TAG} 🏹 Me quedan ${countOf(bot, 'arrow')} flechas: me doy ${ARROWS_GIVE}.`)
     await giveItem(bot, 'arrow', ARROWS_GIVE)
   }
+}
+
+/**
+ * Armadura de diamante puesta. Lo que le falte (la primera vez, o porque se rompió) se lo da con /give y se lo pone;
+ * como mucho una pieza de cada tipo cada 2 min.
+ */
+async function ensureArmor(bot) {
+  if (!bot._armorGivenAt) bot._armorGivenAt = {}
+  const missing = []
+  for (const a of ARMOR) {
+    const worn = bot.inventory.slots[bot.getEquipmentDestSlot(a.dest)]
+    if (worn && a.ok.test(worn.name)) continue
+    const spare = bot.inventory.items().find(i => a.ok.test(i.name))
+    if (spare) {
+      try { await bot.equip(spare, a.dest) } catch {}
+      continue
+    }
+    if (Date.now() - (bot._armorGivenAt[a.dest] || 0) < ARMOR_GIVE_GAP_MS) continue
+    bot._armorGivenAt[a.dest] = Date.now()
+    missing.push(a)
+  }
+  if (missing.length === 0) return
+  const broke = !!bot._armorDressed
+  console.log(`${TAG} 🛡️ ${broke ? 'Se me rompió' : 'Me pongo la armadura de diamante:'} ${missing.map(a => a.es).join(', ')}${broke ? ': me doy otra pieza.' : '.'}`)
+  for (const a of missing) await giveItem(bot, a.item, 1)
+  await waitUntil(() => missing.every(a => bot.inventory.items().some(i => a.ok.test(i.name))), 3000)
+  for (const a of missing) {
+    const piece = bot.inventory.items().find(i => a.ok.test(i.name))
+    if (piece) { try { await bot.equip(piece, a.dest) } catch {} }
+  }
+  bot._armorDressed = true
 }
 
 // ════════════════════════════════════════════════════════════

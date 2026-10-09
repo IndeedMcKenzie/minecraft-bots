@@ -579,12 +579,7 @@
       <div class="logs-head">
         <span class="title">Registro</span>
         <button class="tab active" data-filter="all">Todos</button>
-        <button class="tab" data-filter="woodcutter">🪓 Leñador</button>
-        <button class="tab" data-filter="miner">⛏️ Minero</button>
-        <button class="tab" data-filter="farmer">🌾 Granjero</button>
-        <button class="tab" data-filter="fisher">🎣 Pescador</button>
-        <button class="tab" data-filter="organizer">🗂️ Organizador</button>
-        <button class="tab" data-filter="artisan">🛠️ Artesano</button>
+        <!-- Una pestaña por bot: las crea fillLogTabs() con la lista de bots del panel -->
         <button class="tab" data-filter="panel">Panel</button>
       </div>
       <div class="log-list" id="log-list"><div class="empty">Esperando registros…</div></div>
@@ -819,6 +814,7 @@ function fillOnlinePlayers(state) {
 
 function renderState(state) {
   lastState = state
+  fillLogTabs(state.bots)
   fillDebugPlayers(state.bots)
   fillOnlinePlayers(state)
   // Desde otro equipo, "127.0.0.1" sería ese equipo: usar la misma dirección con la que se abrió el panel
@@ -900,13 +896,27 @@ function appendLog(entry) {
   if (stick) list.scrollTop = list.scrollHeight
 }
 
-document.querySelectorAll('[data-filter]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    filter = btn.dataset.filter
-    document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b === btn))
-    renderLogs()
-  })
+// Un solo manejador para todas las pestañas del registro (las de los bots se crean después, con el primer estado)
+$('.logs-head').addEventListener('click', e => {
+  const btn = e.target.closest('[data-filter]')
+  if (!btn) return
+  filter = btn.dataset.filter
+  document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b === btn))
+  renderLogs()
 })
+
+// Pestañas del registro: una por bot, en el orden del panel, antes de "Panel" (así un bot nuevo tiene la suya sola)
+function fillLogTabs(bots) {
+  const panelTab = $('.logs-head [data-filter="panel"]')
+  for (const b of bots) {
+    if ($(`.logs-head [data-filter="${b.key}"]`)) continue
+    const tab = document.createElement('button')
+    tab.className = 'tab' + (filter === b.key ? ' active' : '')
+    tab.dataset.filter = b.key
+    tab.textContent = `${b.emoji} ${b.label}`
+    panelTab.before(tab)
+  }
+}
 
 // ── Botones generales ───────────────────────────────────────
 $('#alert-summary').addEventListener('click', () => {

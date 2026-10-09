@@ -44,7 +44,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
     // Bots cazadores: para las criaturas cuentan como jugadores (a su alrededor aparecen monstruos que cazar)
     private final Set<String> hunters = new HashSet<>();
     private String prefix = "";
-    private boolean noMobSpawning, ignoreSleep, botViewDistance, noMonsterDamage, noFallDamage, noMonsterTarget, deliverCatch;
+    private boolean noMobSpawning, ignoreSleep, botViewDistance, noMonsterDamage, noFallDamage, noMonsterTarget, huntersFight, deliverCatch;
     private PanelApi api;
     private DebugLog debug;
     private BotAssist assist;
@@ -89,6 +89,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
         noMonsterDamage = c.getBoolean("protection.no-monster-damage", true);
         noFallDamage = c.getBoolean("protection.no-fall-damage", true);
         noMonsterTarget = c.getBoolean("protection.no-monster-target", true);
+        huntersFight = c.getBoolean("protection.hunters-fight", true);
         deliverCatch = c.getBoolean("fishing.deliver-catch", true);
         for (Player p : Bukkit.getOnlinePlayers()) if (isBot(p)) applyTo(p);
     }
@@ -190,23 +191,35 @@ public final class BotHelper extends JavaPlugin implements Listener {
         Bukkit.getScheduler().runTask(this, () -> applyViewDistance(p, requested));
     }
 
+    /**
+     * ¿Pelea de verdad? Los cazadores (protection.hunters-fight) no tienen la protección contra monstruos: les atacan y
+     * les hacen daño como a un jugador (llevan armadura y la saturación infinita les cura). Los demás bots, sí.
+     */
+    private boolean fightsMonsters(Player p) {
+        return huntersFight && isHunter(p);
+    }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent e) {
         if (!(e.getEntity() instanceof Player p) || !isBot(p)) return;
+        boolean fights = fightsMonsters(p);
         switch (e.getCause()) {
+            // Las caídas no dañan a ningún bot (tampoco a los cazadores: se teletransportan a sitios en el aire)
             case FALL -> { if (noFallDamage) e.setCancelled(true); return; }
             // Efectos que dejan los monstruos (araña de cueva, bruja, esqueleto wither)
-            case POISON, WITHER -> { if (noMonsterDamage) e.setCancelled(true); return; }
+            case POISON, WITHER -> { if (noMonsterDamage && !fights) e.setCancelled(true); return; }
             default -> { }
         }
-        if (noMonsterDamage && e instanceof EntityDamageByEntityEvent byEntity && isMonster(byEntity.getDamager())) {
+        if (noMonsterDamage && !fights && e instanceof EntityDamageByEntityEvent byEntity && isMonster(byEntity.getDamager())) {
             e.setCancelled(true);
         }
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onTarget(EntityTargetLivingEntityEvent e) {
-        if (noMonsterTarget && e.getTarget() instanceof Player p && isBot(p) && e.getEntity() instanceof Enemy) {
+        // A los cazadores sí van a por ellos, también los creepers (en este servidor mob_griefing está en false: sus
+        // explosiones no rompen bloques)
+        if (noMonsterTarget && e.getTarget() instanceof Player p && isBot(p) && !fightsMonsters(p) && e.getEntity() instanceof Enemy) {
             e.setCancelled(true);
         }
     }
@@ -257,6 +270,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
         long online = Bukkit.getOnlinePlayers().stream().filter(this::isBot).count();
         sender.sendMessage("BotHelper: " + online + " bots conectados · sin spawns " + onOff(noMobSpawning)
             + " · ignoran el sueño " + onOff(ignoreSleep) + " · protección " + onOff(noMonsterDamage || noFallDamage)
+            + " · cazadores sin protección contra monstruos " + onOff(huntersFight)
             + " · distancia por bot " + onOff(botViewDistance) + " · limpieza " + onOff(getConfig().getBoolean("cleanup.enabled", true))
             + " · panel " + (api != null ? "conectado" : "apagado") + " · diagnóstico " + onOff(debug.isEnabled()));
         return true;

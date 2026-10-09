@@ -69,7 +69,7 @@ final class PanelApi {
     private static final int MAX_BODY = 1 << 20;
     // Lo que sabe hacer esta versión: el panel lo mira para usar cada cosa solo si existe
     private static final List<String> FEATURES = List.of("find", "find-immature", "markers", "teleport-surface",
-        "botstart", "give", "bot-view-distance", "cleanup", "hunters", "mob-loot", "teleport-main-world");
+        "botstart", "give", "bot-view-distance", "cleanup", "hunters", "mob-loot", "teleport-main-world", "hunters-fight");
 
     private final BotHelper plugin;
     private final int port;

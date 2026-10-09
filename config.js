@@ -169,6 +169,8 @@ module.exports = {
 
   // Cazador: caza monstruos con espada y arco. Todo esto se cambia en vivo desde el panel (su tarjeta o la pestaña
   // ⚙️ Ajustes) y el modo también desde el juego: !cazador sigueme | explora | auto | ven | casa
+  // Con el plugin BotHelper 1.7 los monstruos le atacan de verdad (a los demás bots no): lleva armadura de diamante
+  // (se la da con /give si le falta), la saturación infinita le cura y con 3 corazones se retira a casa a curarse
   hunter: {
     // 'follow': va con `player` y lo protege (si no está conectado, vigila su casa)
     // 'explore': recorre su zona del mapa (o los alrededores de su casa) cazando lo que encuentra

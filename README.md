@@ -175,7 +175,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 |---|---|
 | ⚡ Performance | Bots **don't spawn mobs** around them (except the hunter) and **don't count for sleeping** |
 | 🎣 Fishing | Whatever a bot catches **appears at its feet** instead of flying towards it (from some shores it hit the edge, fell into the water and was lost) |
-| 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out** |
+| 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out**. The **hunter** is the exception: monsters (creepers too) do attack and hurt it (`protection.hunters-fight`); falls don't hurt it either |
 | 🧱 Chests | Bots **can't place solid blocks on top of a chest** (a covered chest won't open; for a double chest one half is enough) |
 | 🌀 Teleport | Bots teleport **through the plugin**: no `/tp` and no "[Bot_X: Teleported…]" in your chat or the console. Without the plugin they fall back to `/tp` |
 | 🆘 Rescue | The server knows if a bot is in **lava, fire, suffocating or drowning**, or how long it has been **still** even across reconnects; the panel brings it home (`config.js` → `serverRescue`: miner and woodcutter, 4 min still away from home) |
@@ -232,7 +232,7 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 | Miner | 1 pickaxe and 32 cobblestone + 32 cobbled deepslate (for rescue pillars) |
 | Farmer | 1 hoe, 32 wheat seeds, 16 carrots / potatoes / beetroot seeds |
 | Fisher | 1 fishing rod |
-| Hunter | 1 sword of each type, the bow and 192 arrows |
+| Hunter | 1 sword of each type, the bow, 192 arrows and its diamond armor |
 
 ### 🪓 Woodcutter
 - Finds the base of a tree (radius 96), chops it bottom-up and replants the sapling. The log says how many logs it
@@ -317,6 +317,12 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
   stores it at home when full; the organizer moves it to the Mobs category. Out of arrows, it `/give`s itself 64.
 - **It never breaks or places blocks** to get through (`canDig: false`): it can walk around your base safely.
 - Without a sword or bow it goes home for the spare the artisan leaves there.
+- **Monsters really attack it** (only it: the other bots stay protected), so it works as a shield: they go for it
+  instead of you. It wears **diamond armor** (it `/give`s itself any missing or broken piece) and **infinite
+  saturation heals it** one heart per second. At **3 hearts or less** it leaves the fight, heals at home and comes back
+  at 8. If something it doesn't hunt attacks it (an enderman, a zombified piglin…), it fights back. If it dies, with
+  `keepInventory` it loses nothing: it respawns and comes back.
+  > With the `mob_griefing` game rule off, creepers exploding next to it don't break blocks.
 
 ### 🆘 Getting unstuck (woodcutter & miner)
 - If a bot spends **90 s away from home without moving more than 3 blocks**, it's considered stuck:

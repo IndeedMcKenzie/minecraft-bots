@@ -48,6 +48,10 @@ protection:
   no-fall-damage: true
   # Los monstruos no los persiguen
   no-monster-target: true
+  # Los cazadores (lista hunters) no tienen la protección contra monstruos: les persiguen y les hacen daño como a un
+  # jugador (llevan armadura de diamante y la saturación infinita les cura), también los creepers: con la regla
+  # mob_griefing en false sus explosiones no rompen bloques. Las caídas siguen sin hacerles daño
+  hunters-fight: true
   # Los bots no pueden poner bloques sólidos encima de un cofre (si no, el cofre no se abre)
   no-blocks-on-chests: true
 

@@ -176,7 +176,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | 🧹 Criaturas | En Paper 26.2 aparecían cientos de criaturas por minuto alrededor de los bots y, como los bots no cuentan para que desaparezcan solas, se acumulaban por miles. Ahora no se deja que aparezcan (de forma natural) monstruos, murciélagos ni peces lejos de los jugadores reales, y cada minuto se quitan los monstruos, murciélagos y peces **desechables** (sin nombre, sin correa, no persistentes, no sacados con cubo) que estén a más de 128 bloques de cualquier jugador real. Nunca toca animales, aldeanos ni jefes, ni nada cerca de ti |
 | 🤫 Sin comandos | La escala y la saturación de los bots al aparecer, y los objetos que se dan (cofres, hornos, herramientas…), los pone el plugin: no sale nada en tu chat de OP. Sin el plugin, los bots usan `/attribute`, `/effect` y `/give` |
 | 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
-| 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan** |
+| 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan**. El **Cazador** es la excepción: a él sí le atacan los monstruos (también los creepers) y le hacen daño (`protection.hunters-fight`); las caídas tampoco le dañan |
 | 🧱 Cofres | Los bots **no pueden poner bloques sólidos encima de un cofre** (un cofre tapado no se abre; en uno doble basta con una mitad) |
 | 🌀 Teletransporte | Los bots se teletransportan **a través del plugin**: sin `/tp` ni "[Bot_X: Teleported…]" en tu chat y en la consola. Sin el plugin, vuelven a usar `/tp` |
 | 🆘 Rescate | El servidor sabe si un bot está en **lava, fuego, asfixiándose o ahogándose**, o cuánto lleva **quieto** aunque se reconecte; el panel lo devuelve a casa (`config.js` → `serverRescue`: Minero y Leñador, 4 min quietos lejos de casa) |
@@ -229,7 +229,7 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 | Minero | 1 pico y 32 adoquines + 32 de pizarra profunda (para pilares de rescate) |
 | Granjero | 1 azada, 32 semillas de trigo, 16 zanahorias / patatas / semillas de remolacha |
 | Pescador | 1 caña |
-| Cazador | 1 espada de cada tipo, el arco y 192 flechas |
+| Cazador | 1 espada de cada tipo, el arco, 192 flechas y su armadura de diamante |
 
 ### 🪓 Leñador
 - Busca la base de un árbol (radio 96), lo tala de abajo arriba y replanta el brote. El registro dice cuántos
@@ -313,6 +313,12 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
   llenarse; el Organizador lo lleva a la categoría Mobs. Si se queda sin flechas se da 64 con `/give`.
 - **No rompe ni pone bloques** para abrirse paso (`canDig: false`): puede caminar por tu base sin estropear nada.
 - Sin espada o sin arco, va a casa a por el repuesto que le deja el Artesano.
+- **Los monstruos le atacan de verdad** (solo a él: los demás bots siguen protegidos), así que hace de escudo: van a
+  por él en vez de a por ti. Lleva **armadura de diamante** (si le falta o se le rompe una pieza, se la da con
+  `/give`) y la **saturación infinita le cura** 1 corazón por segundo. Con **3 corazones o menos** deja la pelea, se va
+  a casa a curarse y vuelve con 8. Si algo que no caza le ataca (un enderman, un piglin zombi…), se defiende. Si muere,
+  con `keepInventory` no pierde nada: reaparece y vuelve.
+  > Con la regla `mob_griefing` desactivada, los creepers que exploten a su lado no rompen bloques.
 
 ### 🆘 Rescate de atascos (leñador y minero)
 - Si pasan **90 s fuera de casa sin alejarse más de 3 bloques**, se consideran atascados:
