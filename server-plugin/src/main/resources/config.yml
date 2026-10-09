@@ -28,6 +28,16 @@ protection:
   no-fall-damage: true
   # Los monstruos no los persiguen
   no-monster-target: true
+  # Los bots no pueden poner bloques sólidos encima de un cofre (si no, el cofre no se abre)
+  no-blocks-on-chests: true
+
+# Chat: sin mensajes de entrada, salida, muerte ni logros de los bots
+chat:
+  silence-bots: true
+
+# Imán: lo que suelta un bloque que rompe un bot aparece a sus pies
+magnet:
+  enabled: true
 
 # Pesca
 fishing:

@@ -121,8 +121,10 @@ const alerts = createAlerts({
   // Cada alerta nueva o resuelta queda también en el registro del bot
   onChange: (key, alert, appeared) => {
     const label = DEF_BY_KEY[key].label
-    if (appeared) console.warn(`[${label}] 🚨 Alerta: ${alert.text}`)
-    else console.log(`[${label}] ✅ Resuelto: ${alert.text}`)
+    if (appeared) {
+      console.warn(`[${label}] 🚨 Alerta: ${alert.text}`)
+      notifyDiscord(`${alert.level === 'err' ? '🚨' : '⚠️'} ${DEF_BY_KEY[key].emoji} ${label}: ${alert.text}`)
+    } else console.log(`[${label}] ✅ Resuelto: ${alert.text}`)
   },
 })
 const evaluateAlerts = () => { for (const d of BOT_DEFS) alerts.evaluate(d.key) }
@@ -135,6 +137,60 @@ function serverAlerts() {
     out.push({ id: 'tps', level: 'warn', since: info.lowTpsSince, text: `El servidor va lento: ${info.tps[0]} TPS (lo normal es 20)` })
   }
   return out
+}
+
+// ── Alertas a Discord (DiscordSRV, vía la consola del plugin) ──
+const discordSent = []          // horas de los últimos envíos (para el tope por hora)
+const discordRecent = new Map() // texto → hora (no repetir el mismo aviso en 30 min)
+function notifyDiscord(text) {
+  const n = cfg.notifications || {}
+  if (!n.discord || !serverlink.isOnline()) return
+  const now = Date.now()
+  while (discordSent.length && now - discordSent[0] > 3600000) discordSent.shift()
+  if (discordSent.length >= (n.discordMaxPerHour || 20)) return
+  if (discordRecent.has(text) && now - discordRecent.get(text) < 30 * 60000) return
+  discordSent.push(now)
+  discordRecent.set(text, now)
+  const clean = text.replace(/[\r\n]+/g, ' ').slice(0, 300)
+  serverlink.runCommand(`discord broadcast ${clean}`).catch(() => {})
+}
+
+// ── Rescate desde el servidor (plugin BotHelper) ─────────────
+// El servidor sabe con certeza si un bot está en lava/fuego/asfixiándose, y cuánto lleva sin moverse aunque
+// se reconecte (el detector de atascos del bot se reinicia al reconectar y no ve el caso de la roca madre).
+const HAZARD_ES = { LAVA: 'lava', FIRE: 'fuego', FIRE_TICK: 'fuego', SUFFOCATION: 'asfixia dentro de un bloque', DROWNING: 'ahogándose' }
+const lastRescue = {}
+async function serverRescueCheck() {
+  const rc = cfg.serverRescue || {}
+  if (!rc.enabled || !serverlink.isOnline()) return
+  const common = require('./bots/common')
+  const now = Date.now()
+  for (const d of BOT_DEFS) {
+    const bot = onlineBot(d.key)
+    if (!bot || !bot.home || bot.pendingCommand) continue
+    if (lastRescue[d.key] && now - lastRescue[d.key] < 3 * 60000) continue
+    const info = serverlink.playerInfo(bot.username)
+    if (!info) continue
+    const farFromHome = bot.entity.position.distanceTo(bot.home) > 8
+    let reason = null
+    if (info.hazard) reason = `en peligro (${HAZARD_ES[info.hazard] || info.hazard})`
+    else if (cfg.bots[d.key].stuckWatch && farFromHome && !bot.idle && info.stillSeconds >= (rc.stillMinutes || 4) * 60) {
+      reason = `quieto ${Math.round(info.stillSeconds / 60)} min lejos de casa`
+    }
+    if (!reason) continue
+    lastRescue[d.key] = now
+    console.warn(`[${d.label}] 🆘 El servidor me ve ${reason}: me devuelve a casa.`)
+    stats.add(d.key, 'atascos')
+    // Que no vuelva enseguida a lo que perseguía
+    if (bot.currentTarget) common.markBad(bot, bot.currentTarget, 15 * 60000, true)
+    try { bot.pathfinder.setGoal(null) } catch {}
+    try {
+      const r = await serverlink.teleport(bot.username, { x: bot.home.x + 0.5, y: bot.home.y + 1, z: bot.home.z + 0.5 })
+      if (!r.ok) console.warn(`[${d.label}] 🆘 El rescate falló: ${r.error || 'sin motivo'}`)
+    } catch (err) {
+      console.warn(`[${d.label}] 🆘 El rescate falló: ${err.message}`)
+    }
+  }
 }
 
 // ── Estado ───────────────────────────────────────────────────
@@ -505,6 +561,7 @@ server.listen(PORT, HOST, () => {
   }, 250)
   setInterval(() => broadcast('state', getState()), STATE_INTERVAL_MS)
   setInterval(evaluateAlerts, 10000)
+  setInterval(serverRescueCheck, 10000)
   // Tiempo conectado de cada bot (para las estadísticas)
   setInterval(() => {
     for (const d of BOT_DEFS) {

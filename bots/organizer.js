@@ -27,6 +27,7 @@ const {
   depositNoMerge,
   setIssue,
   idleSleep,
+  requestTeleport,
   openWithTimeout,
   clearIssue,
   sleep,
@@ -267,7 +268,7 @@ async function deliverRequest(bot, req) {
       return
     }
 
-    bot.chat(`/tp ${bot.username} ${player}`)
+    await requestTeleport(bot, { to: player })
     const near = () => {
       const e = bot.players[player] && bot.players[player].entity
       return e && e.position.distanceTo(bot.entity.position) < 6

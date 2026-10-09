@@ -103,6 +103,16 @@ async function debugEvents(opts) {
   return call('/events', opts)
 }
 
+/** Teletransporta a un bot con el plugin: target { x, y, z, world? } o { to: 'Jugador' }. */
+async function teleport(player, target) {
+  return call('/teleport', { player, ...target })
+}
+
+/** Datos de un jugador según el servidor (con stillSeconds y hazard si es un bot), o null. */
+function playerInfo(name) {
+  return (online && status && status.players.find(p => p.name === name)) || null
+}
+
 async function runCommand(command) {
   return call('/command', { command })
 }
@@ -127,4 +137,4 @@ function start() {
   setInterval(refreshChests, CHESTS_MS).unref()
 }
 
-module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents }
+module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo }

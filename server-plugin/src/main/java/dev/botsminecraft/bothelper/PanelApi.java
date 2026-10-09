@@ -83,6 +83,7 @@ final class PanelApi {
         server.createContext("/chests", ex -> handle(ex, "POST", this::chests));
         server.createContext("/command", ex -> handle(ex, "POST", this::command));
         server.createContext("/events", ex -> handle(ex, "POST", this::events));
+        server.createContext("/teleport", ex -> handle(ex, "POST", this::teleport));
         server.start();
     }
 
@@ -149,8 +150,10 @@ final class PanelApi {
             List<Map<String, Object>> players = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
                 Location l = p.getLocation();
-                players.add(Map.of("name", p.getName(), "bot", plugin.isBot(p), "world", l.getWorld().getName(),
+                Map<String, Object> info = new LinkedHashMap<>(Map.of("name", p.getName(), "bot", plugin.isBot(p), "world", l.getWorld().getName(),
                     "x", l.getBlockX(), "y", l.getBlockY(), "z", l.getBlockZ(), "health", round(p.getHealth())));
+                if (plugin.isBot(p) && plugin.assist() != null) info.putAll(plugin.assist().info(p));
+                players.add(info);
             }
             out.put("players", players);
             List<Map<String, Object>> worlds = new ArrayList<>();
@@ -244,6 +247,33 @@ final class PanelApi {
             }
         }
         return null;
+    }
+
+    // ── /teleport ────────────────────────────────────────────
+    // { player, x, y, z, world? } o { player, to: "OtroJugador" }. Sin comando de chat: no aparece "[Bot: Teleported…]"
+    // en el chat de los OP ni en la consola, y el bot no necesita ser OP para esto.
+
+    private Object teleport(JsonObject body) throws Exception {
+        String name = body.get("player").getAsString();
+        return sync(() -> {
+            Player p = Bukkit.getPlayerExact(name);
+            if (p == null) return Map.of("ok", false, "error", name + " no está conectado");
+            if (!plugin.isBot(p)) return Map.of("ok", false, "error", "Solo se puede teletransportar a los bots");
+            Location dest;
+            if (body.has("to")) {
+                Player target = Bukkit.getPlayerExact(body.get("to").getAsString());
+                if (target == null) return Map.of("ok", false, "error", "Ese jugador no está conectado");
+                dest = target.getLocation();
+            } else {
+                World w = body.has("world") ? Bukkit.getWorld(body.get("world").getAsString()) : p.getWorld();
+                if (w == null) return Map.of("ok", false, "error", "Mundo desconocido");
+                dest = new Location(w, body.get("x").getAsDouble(), body.get("y").getAsDouble(), body.get("z").getAsDouble(),
+                    p.getLocation().getYaw(), p.getLocation().getPitch());
+            }
+            boolean ok = p.teleport(dest, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
+            if (ok && plugin.assist() != null) plugin.assist().resetTracking(p);
+            return Map.of("ok", ok);
+        });
     }
 
     // ── /events (registro de diagnóstico) ─────────────────────

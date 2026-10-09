@@ -42,6 +42,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
     private boolean noMobSpawning, ignoreSleep, noMonsterDamage, noFallDamage, noMonsterTarget, deliverCatch;
     private PanelApi api;
     private DebugLog debug;
+    private BotAssist assist;
 
     @Override
     public void onEnable() {
@@ -50,6 +51,8 @@ public final class BotHelper extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         debug = new DebugLog(this, getConfig().getBoolean("debug.enabled", false));
         getServer().getPluginManager().registerEvents(debug, this);
+        assist = new BotAssist(this);
+        getServer().getPluginManager().registerEvents(assist, this);
         startApi();
     }
 
@@ -102,6 +105,10 @@ public final class BotHelper extends JavaPlugin implements Listener {
 
     DebugLog debug() {
         return debug;
+    }
+
+    BotAssist assist() {
+        return assist;
     }
 
     public boolean isBot(Player p) {
@@ -180,6 +187,7 @@ public final class BotHelper extends JavaPlugin implements Listener {
         if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
             stopApi();
             loadSettings();
+            if (assist != null) assist.reload();
             startApi();
             sender.sendMessage("BotHelper recargado.");
             return true;

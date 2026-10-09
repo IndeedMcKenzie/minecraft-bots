@@ -149,6 +149,11 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor y **no cuentan para dormir** |
 | 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
 | 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan** |
+| 🧱 Cofres | Los bots **no pueden poner bloques sólidos encima de un cofre** (un cofre tapado no se abre; en uno doble basta con una mitad) |
+| 🌀 Teletransporte | Los bots se teletransportan **a través del plugin**: sin `/tp` ni "[Bot_X: Teleported…]" en tu chat y en la consola. Sin el plugin, vuelven a usar `/tp` |
+| 🆘 Rescate | El servidor sabe si un bot está en **lava, fuego, asfixiándose o ahogándose**, o cuánto lleva **quieto** aunque se reconecte; el panel lo devuelve a casa (`config.js` → `serverRescue`: Minero y Leñador, 4 min quietos lejos de casa) |
+| 🔇 Silencio | Sin mensajes de **entrada, salida, muerte ni logros** de los bots en el chat |
+| 🧲 Imán | Lo que suelta un bloque que rompe un bot **aparece a sus pies** |
 | 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola**; **registro de diagnóstico** de lo que hacen los bots |
 
 Solo escucha en el propio PC (`127.0.0.1:8200`) y pide una clave que genera al arrancar
@@ -164,6 +169,12 @@ Compila con las librerías del propio servidor (`C:\Server` por defecto; otra ca
 `serverPlugin` va la dirección del plugin y la ruta de `token.txt`.
 
 Los murciélagos y demás criaturas que ya existían no desaparecen solos: `kill @e[type=minecraft:bat]` en la consola.
+
+**Alertas en Discord:** si tienes **DiscordSRV**, las alertas nuevas (rojas y amarillas) se publican en su canal principal
+con `discord broadcast` (`config.js` → `notifications`: `discord`, `discordMaxPerHour`; no repite el mismo aviso en 30 min).
+
+Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`protection.no-blocks-on-chests`,
+`chat.silence-bots`, `magnet.enabled`…) y aplicar con `/bothelper reload`.
 
 ---
 

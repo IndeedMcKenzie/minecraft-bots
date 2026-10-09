@@ -1105,10 +1105,25 @@ async function teleportHome(bot) {
  * /tp encima del bloque `pos` (normalmente un cofre) y espera a que carguen los chunks de destino.
  * Requiere OP. Devuelve true si el bot llegó.
  */
+/**
+ * Pide el teletransporte al plugin BotHelper si está conectado (sin comando de chat: no llena el chat de los
+ * OP ni la consola). Si no está, o falla, usa /tp como siempre. target: { x, y, z } o { to: 'Jugador' }.
+ */
+async function requestTeleport(bot, target) {
+  try {
+    const link = require('../panel/serverlink') // aquí: serverlink usa módulos que dependen de este archivo
+    if (link.isOnline()) {
+      const r = await link.teleport(bot.username, target)
+      if (r && r.ok) return
+    }
+  } catch {}
+  bot.chat(target.to ? `/tp ${bot.username} ${target.to}` : `/tp ${bot.username} ${target.x} ${target.y} ${target.z}`)
+}
+
 async function teleportTo(bot, pos) {
   if (!bot.entity) return false
   if (bot.entity.position.distanceTo(pos.offset(0.5, 1, 0.5)) < 2) return true
-  bot.chat(`/tp ${bot.username} ${pos.x + 0.5} ${pos.y + 1} ${pos.z + 0.5}`)
+  await requestTeleport(bot, { x: pos.x + 0.5, y: pos.y + 1, z: pos.z + 0.5 })
   const moved = await waitUntil(() => bot.entity && bot.entity.position.distanceTo(pos.offset(0.5, 1, 0.5)) < 3, 4000)
   if (!moved) {
     console.warn(`[${bot.label}] 🌀 El /tp a ${fmtPos(pos)} no funcionó. ¿Es OP? Ejecuta en la consola del servidor: op ${bot.username}`)
@@ -1265,7 +1280,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
-  setIssue, clearIssue, openWithTimeout, idleSleep,
+  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos
 }

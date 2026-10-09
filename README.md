@@ -152,6 +152,11 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 | ⚡ Performance | Bots **don't spawn mobs** around them and **don't count for sleeping** |
 | 🎣 Fishing | Whatever a bot catches **appears at its feet** instead of flying towards it (from some shores it hit the edge, fell into the water and was lost) |
 | 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out** |
+| 🧱 Chests | Bots **can't place solid blocks on top of a chest** (a covered chest won't open; for a double chest one half is enough) |
+| 🌀 Teleport | Bots teleport **through the plugin**: no `/tp` and no "[Bot_X: Teleported…]" in your chat or the console. Without the plugin they fall back to `/tp` |
+| 🆘 Rescue | The server knows if a bot is in **lava, fire, suffocating or drowning**, or how long it has been **still** even across reconnects; the panel brings it home (`config.js` → `serverRescue`: miner and woodcutter, 4 min still away from home) |
+| 🔇 Silence | No **join, leave, death or advancement** messages for bots in chat |
+| 🧲 Magnet | Whatever a block broken by a bot drops **appears at its feet** |
 | 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console**; **diagnostic log** of what the bots do |
 
 It only listens on this PC (`127.0.0.1:8200`) and requires a key it creates on startup
@@ -167,6 +172,12 @@ It compiles against the server's own libraries (`C:\Server` by default; another 
 `serverPlugin` holds the plugin address and the path to `token.txt`.
 
 Mobs that already existed don't vanish on their own: run `kill @e[type=minecraft:bat]` in the console.
+
+**Discord alerts:** with **DiscordSRV**, new alerts (red and yellow) are posted to its main channel via `discord broadcast`
+(`config.js` → `notifications`: `discord`, `discordMaxPerHour`; the same alert isn't repeated within 30 min).
+
+Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protection.no-blocks-on-chests`,
+`chat.silence-bots`, `magnet.enabled`…) and applied with `/bothelper reload`.
 
 ---
 

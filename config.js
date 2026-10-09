@@ -42,6 +42,21 @@ module.exports = {
     tokenFile: 'C:/Server/plugins/BotHelper/token.txt', // la clave la crea el plugin al arrancar
   },
 
+  // Avisos fuera del panel
+  notifications: {
+    // Las alertas nuevas (rojas y amarillas) se publican en el canal principal de Discord con DiscordSRV
+    // (necesita el plugin BotHelper para mandar el comando "discord broadcast")
+    discord: true,
+    discordMaxPerHour: 20, // tope para no llenar el canal si algo falla en bucle
+  },
+
+  // Rescate desde el servidor (necesita el plugin BotHelper): si el servidor ve a un bot en lava, fuego o
+  // asfixiándose, o al Minero/Leñador quieto este tiempo lejos de casa, lo devuelve a casa al momento
+  serverRescue: {
+    enabled: true,
+    stillMinutes: 4,
+  },
+
   // Comportamientos globales
   reconnect: {
     enabled: true,
@@ -152,14 +167,17 @@ module.exports = {
   },
 
   // Bots disponibles (nombre en el servidor). home opcional: { x, y, z } de su cofre.
-  // viewDistance opcional por bot (sustituye a server.viewDistance).
+  // viewDistance por bot: chunks que pide al servidor (número, o 'tiny' 6 / 'short' 8 / 'normal' 10). Menos chunks =
+  // menos CPU y RAM en el panel y menos trabajo para el servidor. Debe cubrir lo que busca cada bot (1 chunk = 16 bloques):
+  // leñador 96 bloques → 6, minero 64 → 5, granjero 48 → 4, pescador 32 → 3; el organizador tiene que ver todo el
+  // almacén (súbelo si el almacén pasa de ~80 bloques de radio).
   // give: lo que entrega el botón "Dar herramienta" del panel con /give (el bot debe ser OP).
   bots: {
-    woodcutter: { username: 'Bot_Lenador',  home: null, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_axe', count: 1 }] },
-    miner:      { username: 'Bot_Minero',   home: null, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_pickaxe', count: 1 }] },
-    farmer:     { username: 'Bot_Granjero', home: null, give: [{ item: 'diamond_hoe', count: 1 }, { item: 'wheat_seeds', count: 32 }] },
-    fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 'tiny' }, // no explora: carga menos chunks
-    organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, pathfinderTickMs: 40 }, // su casa es el almacén central (la eliges tú)
-    artisan:    { username: 'Bot_Artesano', home: null, autoHome: false, viewDistance: 'tiny' }, // funde, cocina y fabrica herramientas; su casa es el taller (la eliges tú)
+    woodcutter: { username: 'Bot_Lenador',  home: null, viewDistance: 6, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_axe', count: 1 }] },
+    miner:      { username: 'Bot_Minero',   home: null, viewDistance: 5, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_pickaxe', count: 1 }] },
+    farmer:     { username: 'Bot_Granjero', home: null, viewDistance: 4, give: [{ item: 'diamond_hoe', count: 1 }, { item: 'wheat_seeds', count: 32 }] },
+    fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 3 }, // no explora: carga menos chunks
+    organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, viewDistance: 5, pathfinderTickMs: 40 }, // su casa es el almacén central (la eliges tú)
+    artisan:    { username: 'Bot_Artesano', home: null, autoHome: false, viewDistance: 4 }, // funde, cocina y fabrica herramientas; su casa es el taller (la eliges tú)
   },
 }

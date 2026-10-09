@@ -10,3 +10,6 @@ server-plugin/build/
 # Logs y perfiles
 *.log
 *.cpuprofile
+
+# Contexto privado para Claude (rutas, IPs y datos del entorno del usuario)
+CLAUDE.md
