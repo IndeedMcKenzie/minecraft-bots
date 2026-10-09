@@ -28,6 +28,7 @@ const {
   SCAFFOLD_ITEMS,
   sleep,
   fmtPos,
+  serverFindBlocks,
 } = require('./common')
 
 // Bloques de andamio que conserva para poder subir en pilar si se atasca en una cueva
@@ -118,7 +119,7 @@ async function workLoop(bot) {
       clearIssue(bot, 'tool')
 
       // ── 5. Buscar el mejor mineral que el pico actual pueda extraer ──
-      const oreBlock = findBestOre(bot, mcData, bot.heldItem?.type)
+      const oreBlock = await findBestOre(bot, mcData, bot.heldItem?.type)
       bot.currentTarget = oreBlock ? oreBlock.position : null // si se atasca yendo, se descarta
 
       if (!oreBlock) {
@@ -169,20 +170,20 @@ async function workLoop(bot) {
 // Una sola búsqueda con todos los minerales (antes eran 16, una por tipo: mucha CPU) y luego
 // se elige el más valioso, y entre iguales el más cercano. Ignora minerales en lista negra,
 // en zonas donde se atascó hace poco y los que el pico no puede extraer.
-function findBestOre(bot, mcData, pickType) {
+async function findBestOre(bot, mcData, pickType) {
   const priority = new Map()
   ORE_PRIORITY.forEach((name, i) => {
     const b = mcData.blocksByName[name]
     if (b) priority.set(b.id, Math.floor(i / 2)) // cada mineral y su versión deepslate comparten prioridad
   })
 
-  const positions = bot.findBlocks({
-    matching: [...priority.keys()],
-    maxDistance: cfg.search.mineRadius,
-    count: 64,
-    // Nunca en las últimas capas: la roca madre aparece mezclada y el minero puede quedar encerrado sin salida
-    useExtraInfo: (b) => b.position.y >= MIN_ORE_Y && !isBad(bot, b.position) && !inStuckZone(bot, b.position) && !!b.canHarvest(pickType),
-  })
+  // Nunca en las últimas capas: la roca madre aparece mezclada y el minero puede quedar encerrado sin salida
+  const usable = (b) => b && b.position.y >= MIN_ORE_Y && !isBad(bot, b.position) && !inStuckZone(bot, b.position) && !!b.canHarvest(pickType)
+  // Lo busca el servidor (plugin); si no está, el bot como siempre
+  const remote = await serverFindBlocks(bot, { types: ORE_PRIORITY, radius: cfg.search.mineRadius, count: 128, minY: MIN_ORE_Y })
+  const positions = remote
+    ? remote.filter(p => usable(bot.blockAt(p)))
+    : bot.findBlocks({ matching: [...priority.keys()], maxDistance: cfg.search.mineRadius, count: 64, useExtraInfo: usable })
   if (positions.length === 0) return null
 
   const here = bot.entity.position

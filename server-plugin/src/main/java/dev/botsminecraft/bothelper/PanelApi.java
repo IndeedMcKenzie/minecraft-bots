@@ -69,6 +69,7 @@ final class PanelApi {
         this.plugin = plugin;
         this.port = port;
         this.token = token.getBytes(StandardCharsets.UTF_8);
+        this.finder = new BlockFinder(plugin);
     }
 
     void start() throws IOException {
@@ -84,6 +85,7 @@ final class PanelApi {
         server.createContext("/command", ex -> handle(ex, "POST", this::command));
         server.createContext("/events", ex -> handle(ex, "POST", this::events));
         server.createContext("/teleport", ex -> handle(ex, "POST", this::teleport));
+        server.createContext("/find", ex -> handle(ex, "POST", this::find));
         server.start();
     }
 
@@ -247,6 +249,29 @@ final class PanelApi {
             }
         }
         return null;
+    }
+
+    // ── /find ────────────────────────────────────────────────
+    // { x, y, z, radius, types: ["diamond_ore", …], count?, minY?, maxY?, mature?, bottom?, world? }
+    // → { positions: [[x,y,z], …] } del más cercano al más lejano. Ver BlockFinder.
+
+    private final BlockFinder finder;
+
+    private Object find(JsonObject body) throws Exception {
+        World w = Bukkit.getWorld(body.has("world") ? body.get("world").getAsString() : "world");
+        if (w == null) return Map.of("ok", false, "error", "Mundo desconocido");
+        List<String> names = new ArrayList<>();
+        for (var e : body.getAsJsonArray("types")) names.add(e.getAsString());
+        var types = BlockFinder.materials(names);
+        if (types.isEmpty()) return Map.of("ok", false, "error", "Ningún tipo de bloque válido");
+        return finder.find(new BlockFinder.Request(w,
+            body.get("x").getAsInt(), body.get("y").getAsInt(), body.get("z").getAsInt(),
+            body.has("radius") ? body.get("radius").getAsInt() : 32, types,
+            body.has("count") ? body.get("count").getAsInt() : 64,
+            body.has("minY") ? body.get("minY").getAsInt() : Integer.MIN_VALUE,
+            body.has("maxY") ? body.get("maxY").getAsInt() : Integer.MAX_VALUE,
+            body.has("mature") && body.get("mature").getAsBoolean(),
+            body.has("bottom") && body.get("bottom").getAsBoolean()));
     }
 
     // ── /teleport ────────────────────────────────────────────

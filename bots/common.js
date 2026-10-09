@@ -843,6 +843,28 @@ function findChestSpots(bot, existing) {
 // El panel deja la orden en bot.pendingCommand; cada bot la ejecuta al inicio de su bucle de trabajo.
 // Mientras tanto safeGoto devuelve false al momento, así la tarea en curso termina rápido.
 
+// ── Búsqueda de bloques en el servidor ───────────────────────
+/**
+ * Pide al plugin BotHelper que busque bloques (minerales, troncos, cultivos maduros…). Recorrer cientos de miles de
+ * bloques en el panel lo congelaba varios segundos para los 6 bots; el servidor lo hace en otro hilo y no carga
+ * chunks. Devuelve posiciones (Vec3) de la más cercana a la más lejana, o null si el plugin no está o no responde
+ * (entonces cada bot usa su búsqueda local de siempre).
+ * opts: { types: [nombres], center?, radius, count?, minY?, maxY?, mature?, bottom? }
+ */
+async function serverFindBlocks(bot, opts) {
+  if (!bot.entity) return null
+  try {
+    const link = require('../panel/serverlink') // aquí: serverlink usa módulos que dependen de este archivo
+    if (!link.isOnline()) return null
+    const c = (opts.center || bot.entity.position).floored()
+    const r = await link.findBlocks({ x: c.x, y: c.y, z: c.z, radius: opts.radius, types: opts.types, count: opts.count || 64,
+      minY: opts.minY, maxY: opts.maxY, mature: !!opts.mature, bottom: !!opts.bottom })
+    return r.positions.map(([x, y, z]) => new Vec3(x, y, z))
+  } catch {
+    return null
+  }
+}
+
 // ── Espera sin gastar CPU ────────────────────────────────────
 /**
  * Espera quieto con la física en pausa (performance.pauseIdlePhysics): mineflayer simula la física de cada bot
@@ -1280,7 +1302,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
-  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport,
+  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, serverFindBlocks,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos
 }

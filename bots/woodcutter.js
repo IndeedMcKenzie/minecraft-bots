@@ -24,6 +24,7 @@ const {
   inStuckZone,
   inReach,
   teleportTo,
+  serverFindBlocks,
   setIssue,
   clearIssue,
   sleep,
@@ -99,12 +100,7 @@ async function workLoop(bot) {
       } else clearIssue(bot, 'tool')
 
       // 4. Buscar árbol cercano
-      const logIds = LOG_TYPES.map(n => mcData.blocksByName[n]?.id).filter(Boolean)
-      const logBlock = bot.findBlock({
-        matching: logIds,
-        maxDistance: cfg.search.woodRadius,
-        useExtraInfo: (block) => !isBad(bot, block.position) && !inStuckZone(bot, block.position) && isBottomLog(bot, block),
-      })
+      const logBlock = await findTree(bot, mcData)
       bot.currentTarget = logBlock ? logBlock.position : null // si se atasca yendo, se descarta
 
       if (!logBlock) {
@@ -200,6 +196,15 @@ async function fellTree(bot, mcData, baseBlock) {
 }
 
 // ── Verificar que es la base de un árbol en tierra natural ───
+// Tronco más cercano que sea la base de un árbol: lo busca el servidor (plugin) y, si no está, el bot
+async function findTree(bot, mcData) {
+  const usable = block => block && !isBad(bot, block.position) && !inStuckZone(bot, block.position) && isBottomLog(bot, block)
+  const remote = await serverFindBlocks(bot, { types: LOG_TYPES, radius: cfg.search.woodRadius, count: 48, bottom: true })
+  if (remote) return remote.map(p => bot.blockAt(p)).find(usable) || null
+  const logIds = LOG_TYPES.map(n => mcData.blocksByName[n]?.id).filter(Boolean)
+  return bot.findBlock({ matching: logIds, maxDistance: cfg.search.woodRadius, useExtraInfo: usable })
+}
+
 function isBottomLog(bot, block) {
   const below = bot.blockAt(block.position.offset(0, -1, 0))
   if (!below) return false

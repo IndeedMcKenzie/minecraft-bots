@@ -154,6 +154,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | 🆘 Rescate | El servidor sabe si un bot está en **lava, fuego, asfixiándose o ahogándose**, o cuánto lleva **quieto** aunque se reconecte; el panel lo devuelve a casa (`config.js` → `serverRescue`: Minero y Leñador, 4 min quietos lejos de casa) |
 | 🔇 Silencio | Sin mensajes de **entrada, salida, muerte ni logros** de los bots en el chat |
 | 🧲 Imán | Lo que suelta un bloque que rompe un bot **aparece a sus pies** |
+| 🔍 Búsquedas | El **servidor** busca los minerales, troncos y cultivos maduros para el Minero, el Leñador y el Granjero (en otro hilo, sin cargar chunks y con 2 ms por tick como mucho). Antes lo hacía el panel y lo congelaba varios segundos; sin el plugin, cada bot busca como antes |
 | 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola**; **registro de diagnóstico** de lo que hacen los bots |
 
 Solo escucha en el propio PC (`127.0.0.1:8200`) y pide una clave que genera al arrancar

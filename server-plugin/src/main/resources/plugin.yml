@@ -1,5 +1,5 @@
 name: BotHelper
-version: 1.2.0
+version: 1.3.0
 main: dev.botsminecraft.bothelper.BotHelper
 api-version: "26.2"
 description: Ayuda a los bots de Mineflayer (rendimiento y protección) y da datos del servidor al panel de control.

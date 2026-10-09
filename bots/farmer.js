@@ -6,7 +6,7 @@ const { pathfinder, goals: { GoalNear } } = require('mineflayer-pathfinder')
 const Vec3 = require('vec3')
 const cfg = require('../config')
 const stats = require('./stats')
-const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, idleSleep, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
+const { botOptions, setupBot, safeGoto, equipBestTool, returnHomeAndDeposit, runPendingCommand, reachHome, teleportTo, idleSleep, serverFindBlocks, isInventoryFull, withdrawToolsFromChest, collectNearbyItems, markBad, isBad, sleep, fmtPos } = require('./common')
 
 const FARM_RADIUS = () => cfg.search.farmRadius || 32
 
@@ -145,7 +145,7 @@ async function harvestMatureCrops(bot, mcData) {
   let unreachable = 0
   let missedInARow = 0
   for (const crop of CROPS) {
-    const matureBlocks = findMatureCrops(bot, mcData, crop)
+    const matureBlocks = await findMatureCrops(bot, mcData, crop)
     for (const block of matureBlocks) {
       if (bot.stopped) return harvested
       const reached = await safeGoto(bot, new GoalNear(block.position.x, block.position.y, block.position.z, 1), 10)
@@ -202,9 +202,13 @@ function matureStateIds(bot, crop) {
   return ids
 }
 
-function findMatureCrops(bot, mcData, crop) {
+async function findMatureCrops(bot, mcData, crop) {
   const ids = matureStateIds(bot, crop)
   if (ids.size === 0) return []
+
+  // Lo busca el servidor (plugin); si no está, el bot como siempre (más abajo)
+  const remote = await serverFindBlocks(bot, { types: [crop.name], center: farmCenter(bot), radius: FARM_RADIUS(), count: 64, mature: true })
+  if (remote) return remote.filter(p => !isBad(bot, p)).map(p => bot.blockAt(p)).filter(b => b && ids.has(b.stateId))
 
   // Buscar por TIPO de bloque deja que mineflayer descarte secciones enteras mirando solo su paleta; la edad
   // se comprueba después solo en los cultivos encontrados. (Con una función en 'matching' se construía un

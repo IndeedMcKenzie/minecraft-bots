@@ -157,6 +157,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 | 🆘 Rescue | The server knows if a bot is in **lava, fire, suffocating or drowning**, or how long it has been **still** even across reconnects; the panel brings it home (`config.js` → `serverRescue`: miner and woodcutter, 4 min still away from home) |
 | 🔇 Silence | No **join, leave, death or advancement** messages for bots in chat |
 | 🧲 Magnet | Whatever a block broken by a bot drops **appears at its feet** |
+| 🔍 Searches | The **server** finds ores, logs and ripe crops for the miner, woodcutter and farmer (on another thread, without loading chunks, at most 2 ms per tick). The panel used to do it and froze for seconds; without the plugin each bot searches as before |
 | 🔌 Panel | **Server status** in the header (TPS, ms per tick, RAM, entities, players) with an alert when it lags; **live warehouse** (reads the chests directly, including what you move by hand); **console**; **diagnostic log** of what the bots do |
 
 It only listens on this PC (`127.0.0.1:8200`) and requires a key it creates on startup

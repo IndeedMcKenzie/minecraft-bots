@@ -30,7 +30,7 @@ function readToken() {
   return token
 }
 
-async function call(path, body) {
+async function call(path, body, timeoutMs = 8000) {
   if (!pcfg.url) throw new Error('Plugin no configurado (config.js → serverPlugin)')
   const key = readToken()
   if (!key) throw new Error('No encuentro la clave del plugin (¿está instalado BotHelper?)')
@@ -40,7 +40,7 @@ async function call(path, body) {
       method: body ? 'POST' : 'GET',
       headers: { 'X-Token': key, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (err) {
     throw new Error(err.name === 'TimeoutError' ? 'El servidor tardó demasiado en responder' : 'El plugin no respondió (¿servidor apagado o reiniciándose?)')
@@ -103,6 +103,11 @@ async function debugEvents(opts) {
   return call('/events', opts)
 }
 
+/** Búsqueda de bloques hecha por el servidor (ver BlockFinder del plugin). */
+async function findBlocks(query) {
+  return call('/find', query, 6000)
+}
+
 /** Teletransporta a un bot con el plugin: target { x, y, z, world? } o { to: 'Jugador' }. */
 async function teleport(player, target) {
   return call('/teleport', { player, ...target })
@@ -137,4 +142,4 @@ function start() {
   setInterval(refreshChests, CHESTS_MS).unref()
 }
 
-module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo }
+module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo, findBlocks }
