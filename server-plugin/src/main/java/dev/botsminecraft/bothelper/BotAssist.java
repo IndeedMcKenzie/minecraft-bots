@@ -6,8 +6,10 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -15,6 +17,7 @@ import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
@@ -53,6 +56,7 @@ final class BotAssist implements Listener {
     private final Map<String, Location> anchor = new ConcurrentHashMap<>();
     private final Map<String, Long> stillSince = new ConcurrentHashMap<>();
     private final Map<String, Object[]> hazard = new ConcurrentHashMap<>(); // { causa, ms }
+    private final Map<String, Map<String, Object>> lastDeath = new ConcurrentHashMap<>(); // causa, quién, cuándo, dónde
 
     BotAssist(BotHelper plugin) {
         this.plugin = plugin;
@@ -96,6 +100,8 @@ final class BotAssist implements Listener {
         out.put("stillSeconds", since == null ? 0 : (System.currentTimeMillis() - since) / 1000);
         Object[] h = hazard.get(p.getName());
         out.put("hazard", h != null && System.currentTimeMillis() - (long) h[1] < HAZARD_WINDOW_MS ? h[0] : null);
+        Map<String, Object> d = lastDeath.get(p.getName());
+        if (d != null) out.put("lastDeath", d);
         return out;
     }
 
@@ -138,9 +144,31 @@ final class BotAssist implements Listener {
         if (silence && isBot(e.getPlayer())) e.quitMessage(null);
     }
 
+    /**
+     * Muerte de un bot: el mensaje no sale en el chat (silencio), así que la causa se apunta en la consola y se da al
+     * panel en /status (lastDeath). El 09/10 el Minero murió y no quedó rastro de por qué.
+     */
     @EventHandler(priority = EventPriority.HIGH)
     public void onDeath(PlayerDeathEvent e) {
-        if (silence && isBot(e.getEntity())) e.deathMessage(null);
+        Player p = e.getEntity();
+        if (!isBot(p)) return;
+        EntityDamageEvent last = p.getLastDamageCause();
+        String cause = last != null ? last.getCause().name() : "UNKNOWN";
+        String by = null;
+        if (last instanceof EntityDamageByEntityEvent byEntity) {
+            Entity damager = byEntity.getDamager();
+            if (damager instanceof Projectile proj && proj.getShooter() instanceof Entity shooter) damager = shooter;
+            by = damager.getType().getKey().getKey();
+        }
+        Location l = p.getLocation();
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("cause", cause);
+        if (by != null) info.put("by", by);
+        info.put("at", System.currentTimeMillis());
+        info.put("pos", new int[] { l.getBlockX(), l.getBlockY(), l.getBlockZ() });
+        lastDeath.put(p.getName(), info);
+        plugin.getLogger().info(p.getName() + " murió: " + cause + (by != null ? " (" + by + ")" : "") + " en " + pos(l));
+        if (silence) e.deathMessage(null);
     }
 
     @EventHandler(priority = EventPriority.HIGH)

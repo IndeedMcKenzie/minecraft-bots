@@ -97,6 +97,8 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   bot.once('spawn', () => {
     ctrl.issue = null
     if (serverDown.delete(botKey)) console.log(`[${name}] 🔌 El servidor vuelve a responder: conectado.`)
+    forceLooks(bot)
+    startHangWatch(bot)
     if (bot.pathfinder) {
       const mcData = bot.registry
       const movements = new Movements(bot, mcData)
@@ -140,6 +142,7 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   bot.on('death', () => {
     console.log(`[${name}] 💀 He muerto.`)
     stats.add(botKey, 'muertes')
+    logDeathCause(bot)
   })
 
   bot.on('error', (err) => {
@@ -313,6 +316,7 @@ function attemptGoto(bot, goal, minTimeoutSeconds, opts = {}) {
       ? bot.entity.position.distanceTo({ x: gx, y: gy ?? bot.entity.position.y, z: gz })
       : null
     if (goalDistance() !== null) timeoutMs = Math.max(minTimeoutSeconds * 1000, Math.ceil(goalDistance() * 2000))
+    beat(bot, gx !== undefined && gz !== undefined ? `ir a ${fmtPos({ x: gx, y: gy ?? bot.entity.position.y, z: gz })}` : 'ir a un sitio')
 
     let timer = null, watch = null, onDig = null
     const finish = (value) => {
@@ -631,6 +635,7 @@ async function unblockChest(bot, block) {
  * openFn: (block) => promesa de la ventana (bot.openContainer por defecto, bot.openFurnace para hornos).
  */
 async function openWithTimeout(bot, block, openFn = b => bot.openContainer(b), ms = 4000, what = 'cofre') {
+  beat(bot, `abrir ${what} ${fmtPos(block.position)}`)
   await unblockChest(bot, block)
   try {
     const w = await new Promise((resolve, reject) => {
@@ -733,6 +738,7 @@ const teleportDistance = () => (cfg.home && cfg.home.teleportDistance) || 150
 /** /tp exactamente a una posición donde ya estuvo el bot (sus pies), no encima de un bloque como teleportTo. */
 async function teleportToSpot(bot, pos) {
   if (!bot.entity) return false
+  beat(bot, `teletransporte a ${fmtPos(pos)}`)
   await requestTeleport(bot, { x: pos.x, y: pos.y, z: pos.z })
   if (!await waitUntil(() => bot.entity && bot.entity.position.distanceTo(pos) < 3, 4000)) return false
   await waitUntil(() => bot.blockAt(pos.floored()) !== null, 5000) // chunks de destino cargados
@@ -766,6 +772,7 @@ async function reachHome(bot) {
 
 // bot.depositing avisa al organizador de que no vacíe estos cofres mientras tanto
 async function depositAtHome(bot, keepItemNames, keepAmounts) {
+  beat(bot, 'guardar en casa')
   bot.depositing = true
   try {
     return await depositAtHomeInner(bot, keepItemNames, keepAmounts)
@@ -1083,6 +1090,120 @@ async function exploreZone(bot, zone) {
   await safeGoto(bot, new GoalNearXZ(Math.floor(zone.x + Math.cos(a) * d), Math.floor(zone.z + Math.sin(a) * d), 3), 20)
 }
 
+// ── Vigilante de bloqueos ────────────────────────────────────
+// El 09/10 el Minero pasó casi 4 h quieto en casa con el inventario lleno (10:31–14:22): su bucle de trabajo se quedó
+// esperando algo que nunca llegó y ningún rescate lo veía (todos dan por bueno a un bot quieto en su casa). Lo más
+// probable: bot.dig() gira la cabeza "suavemente" y espera a que la física del bot termine el giro; si la física se
+// para (posición NaN, que a veces llega por ViaBackwards; muerto sin reaparecer; en un chunk que no le ha llegado),
+// espera para siempre, y lo mismo placeBlock, activateBlock o abrir un cofre. Dos defensas:
+//  · forceLooks: todos los giros al momento (nunca se espera a la física para girar).
+//  · startHangWatch: cada 30 s mira que el bot dé señales de vida (latidos: cada vuelta de su bucle y cada ruta,
+//    cofre, teletransporte o guardado) y que su cliente funcione (posición válida, vivo, física en marcha). Si no,
+//    deja escrito el motivo y se reconecta (se empieza de cero, como al pulsar "Reiniciar" en el panel).
+const HANG_MS = 10 * 60 * 1000       // sin latidos este tiempo = bloqueado (la vuelta más larga, una ronda del Organizador, da latidos)
+const PHYSICS_STALL_MS = 90 * 1000   // con la física activada y sin un solo tick este tiempo (pausas a propósito: ≤ 45 s)
+const NAN_MS = 60 * 1000             // con la posición inválida este tiempo
+const DEAD_MS = 60 * 1000            // muerto este tiempo: pedir reaparecer; el doble: reconectar
+const WATCH_EVERY_MS = 30 * 1000
+
+/** Señal de vida del bot (y qué está haciendo, para explicar un bloqueo si lo hay). */
+function beat(bot, doing = null) {
+  bot._beatAt = Date.now()
+  bot._doing = doing
+}
+
+/**
+ * Giros de cabeza siempre al momento (force). Sin force, mineflayer gira poco a poco y la promesa solo se cumple cuando
+ * la física del bot termina el giro: con la física parada no se cumple nunca. Girar al instante no cambia nada en el
+ * juego (el giro suave solo imita a una persona); el pathfinder y el Cazador ya giraban así.
+ */
+function forceLooks(bot) {
+  if (typeof bot.look !== 'function' || bot._lookForced) return
+  const look = bot.look
+  bot.look = (yaw, pitch) => look(yaw, pitch, true)
+  bot._lookForced = true
+}
+
+function startHangWatch(bot) {
+  beat(bot)
+  bot._physicsTickAt = Date.now()
+  bot.on('physicsTick', () => { bot._physicsTickAt = Date.now() })
+  let nanSince = 0, deadSince = 0, respawnAsked = false
+  const timer = setInterval(() => {
+    try {
+      if (bot.stopped) return clearInterval(timer)
+      if (!bot.entity) return
+      const now = Date.now()
+      const reconnect = (why) => {
+        clearInterval(timer)
+        console.warn(`[${bot.label}] 🧊 ${why}: me reconecto para desbloquearme.`)
+        stats.add(bot.botKey, 'atascos')
+        stats.add(bot.botKey, 'bloqueos')
+        try { bot.quit() } catch {}
+      }
+      // Física en pausa a propósito (idleSleep, el Pescador esperando la picada): no cuenta como parada
+      if (!bot.physicsEnabled) bot._physicsTickAt = now
+
+      // 1. Muerto sin reaparecer (mientras está muerto no hay física ni latidos: lo demás no cuenta)
+      if (bot.isAlive === false) {
+        deadSince = deadSince || now
+        if (now - deadSince >= 2 * DEAD_MS) return reconnect('Llevo 2 min muerto sin reaparecer')
+        if (now - deadSince >= DEAD_MS && !respawnAsked) {
+          respawnAsked = true
+          console.warn(`[${bot.label}] 💀 Llevo 1 min muerto sin reaparecer: lo pido otra vez.`)
+          try { bot.respawn() } catch {}
+        }
+        return
+      }
+      deadSince = 0
+      respawnAsked = false
+
+      // 2. Posición inválida (NaN): mineflayer deja de simular su física y de mandar su posición al servidor
+      if (!Number.isFinite(bot.entity.position.x) || !Number.isFinite(bot.entity.position.y)) {
+        nanSince = nanSince || now
+        if (now - nanSince >= NAN_MS) return reconnect('Mi posición es inválida (NaN) desde hace 1 min')
+        return
+      }
+      nanSince = 0
+
+      // 3. Física parada sin motivo (p. ej. en un chunk que el cliente no tiene): no se mueve ni manda su posición
+      if (now - bot._physicsTickAt >= PHYSICS_STALL_MS) {
+        const noChunk = bot.blockAt(bot.entity.position) === null ? ' (estoy en un chunk que no me ha llegado)' : ''
+        return reconnect(`Mi física lleva ${Math.round((now - bot._physicsTickAt) / 1000)} s parada${noChunk}`)
+      }
+
+      // 4. Sin latidos: el bucle de trabajo espera algo que no llega
+      if (now - bot._beatAt >= HANG_MS) {
+        reconnect(`Llevo ${Math.round((now - bot._beatAt) / 60000)} min sin avanzar${bot._doing ? ` (lo último que empecé: ${bot._doing})` : ''}`)
+      }
+    } catch (err) {
+      console.warn(`[${bot.label}] Vigilante de bloqueos: ${err.message}`)
+    }
+  }, WATCH_EVERY_MS)
+  bot.once('end', () => clearInterval(timer))
+}
+
+// Causa de una muerte según el plugin BotHelper 1.7.1 (en el chat no sale: los mensajes de los bots están silenciados)
+const DEATH_ES = {
+  LAVA: 'lava', FIRE: 'fuego', FIRE_TICK: 'quemado', HOT_FLOOR: 'bloque de magma', DROWNING: 'ahogado',
+  SUFFOCATION: 'asfixia dentro de un bloque', VOID: 'caída al vacío', FALL: 'caída', FALLING_BLOCK: 'bloque que le cayó',
+  ENTITY_ATTACK: 'atacado', ENTITY_SWEEP_ATTACK: 'atacado', PROJECTILE: 'flechazo', ENTITY_EXPLOSION: 'explosión',
+  BLOCK_EXPLOSION: 'explosión', MAGIC: 'poción', POISON: 'veneno', WITHER: 'efecto wither', CONTACT: 'cactus o arbusto',
+  FREEZE: 'congelado', LIGHTNING: 'rayo', KILL: '/kill', SUICIDE: '/kill', CRAMMING: 'aplastado entre entidades',
+}
+function logDeathCause(bot) {
+  setTimeout(() => {
+    try {
+      const link = require('../panel/serverlink')
+      const info = link.playerInfo(bot.username)
+      const d = info && info.lastDeath
+      if (!d || Date.now() - d.at > 60000) return
+      const what = (DEATH_ES[d.cause] || d.cause) + (d.by ? ` (${d.by})` : '')
+      console.log(`[${bot.label}] 💀 Causa: ${what} en (${d.pos.join(', ')}).`)
+    } catch {}
+  }, 7000) // el panel lee el estado del servidor cada 5 s
+}
+
 // ── Espera sin gastar CPU ────────────────────────────────────
 /**
  * Espera quieto con la física en pausa (performance.pauseIdlePhysics): mineflayer simula la física de cada bot
@@ -1118,6 +1239,7 @@ function requestCommand(bot, type) {
 
 /** Ejecuta la orden pendiente, si la hay. Devuelve true si ejecutó alguna. */
 async function runPendingCommand(bot) {
+  beat(bot) // cada bot la llama al empezar cada vuelta de su bucle de trabajo
   const cmd = bot.pendingCommand
   if (!cmd) return false
   bot.commandRunning = true
@@ -1368,6 +1490,7 @@ async function requestTeleport(bot, target) {
 
 async function teleportTo(bot, pos) {
   if (!bot.entity) return false
+  beat(bot, `teletransporte a ${fmtPos(pos)}`)
   if (bot.entity.position.distanceTo(pos.offset(0.5, 1, 0.5)) < 2) return true
   await requestTeleport(bot, { x: pos.x + 0.5, y: pos.y + 1, z: pos.z + 0.5 })
   const moved = await waitUntil(() => bot.entity && bot.entity.position.distanceTo(pos.offset(0.5, 1, 0.5)) < 3, 4000)
@@ -1527,7 +1650,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
-  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, haltPathfinder, serverFindBlocks, giveItem,
+  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, haltPathfinder, beat, serverFindBlocks, giveItem,
   getZone, setZone, inZone, goToZone, exploreZone,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos

@@ -129,7 +129,7 @@ for **this session** or **all time**:
 - **Hourly chart** of items stored at home (last 24 h); hover for a per-bot breakdown.
 - **Per-bot output per hour:** one chart per bot with its main job (trees, ores, crops, catches, items sorted,
   items smelted, monsters hunted) over the last 24 h; it warns if the last hour was far below the bot's average.
-- **Per-bot table:** time online, items stored, trips home, teleports, times stuck, chests placed,
+- **Per-bot table:** time online, items stored, trips home, teleports, times stuck, freezes, chests placed,
   deaths and kicks.
 - **Breakdowns:** ores by type, catches by type, warehouse by category and hunted monsters by type.
 
@@ -389,6 +389,10 @@ username (`Bot_Minero`).
 - **Resources:** with all 7 bots the process uses about **400–450 MB of RAM** and around **half a CPU core**
   while everyone is busy. Path computation is the biggest cost (`performance.pathfinderTickMs`).
 - **If a bot dies**, it respawns at spawn or its bed and goes back to work (with `keepInventory` it loses nothing).
+  With the BotHelper 1.7.1 plugin the log shows the cause («💀 Causa: lava en (x, y, z)»), which isn't shown in chat.
+- **Frozen bots:** if a bot spends **10 minutes without progress** (its work got stuck waiting for something that never
+  comes) or its connection ends up in a broken state (invalid position, dead without respawning, physics stopped), it
+  **reconnects by itself** and the log says why («🧊 …»). The statistics table counts them as «Bloqueos».
 - **Change a bot's home:** `!casa <bot>` / 🏠 Fijar casa, or delete `data/home_<bot>.json`.
 - **Home chest broken:** the bot forgets that home and adopts another (except organizer, artisan and hunter).
 - **Red warnings** in the log are mostly self-explanatory ("¿Es OP?" = is it OP?, "cofres llenos" = chests

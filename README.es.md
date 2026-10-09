@@ -129,7 +129,7 @@ Puedes ver **«Esta sesión»** o **«Desde siempre»**:
 - **Producción de cada bot por hora:** una gráfica por bot con su trabajo principal (árboles, minerales,
   cosechas, capturas, objetos ordenados, fundidos, cazados) en las últimas 24 h; avisa si la última hora quedó muy por
   debajo de su media.
-- **Tabla por bot:** tiempo conectado, objetos guardados, viajes a casa, teletransportes, atascos,
+- **Tabla por bot:** tiempo conectado, objetos guardados, viajes a casa, teletransportes, atascos, bloqueos,
   cofres creados, muertes y expulsiones.
 - **Desgloses:** minerales por tipo, pesca por tipo, almacén por categoría y caza por tipo de monstruo.
 
@@ -384,6 +384,10 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 - **Recursos:** con los 7 bots, el proceso usa unos **400–450 MB de RAM** y en torno a **medio núcleo de CPU**
   cuando todos están activos. Lo que más gasta es el cálculo de rutas (`performance.pathfinderTickMs`).
 - **Si un bot muere**, reaparece en el spawn o en su cama y vuelve a trabajar (con `keepInventory` no pierde nada).
+  Con el plugin BotHelper 1.7.1 el registro dice la causa («💀 Causa: lava en (x, y, z)»), que en el chat no sale.
+- **Bots bloqueados:** si un bot pasa **10 minutos sin avanzar** (su trabajo se quedó esperando algo que no llega) o su
+  conexión queda en un estado raro (posición inválida, muerto sin reaparecer, física parada), **se reconecta solo** y
+  el registro dice por qué («🧊 …»). La tabla de estadísticas los cuenta como «Bloqueos».
 - **Cambiar la casa de un bot:** `!casa <bot>` / 🏠 Fijar casa, o borrar `data/home_<bot>.json`.
 - **Cofre de casa roto:** el bot olvida esa casa y adopta otra (excepto organizador, artesano y cazador).
 - **Avisos en rojo** en el registro: la mayoría se explican solos («¿Es OP?», «cofres llenos», «no llego al

@@ -31,6 +31,7 @@ const {
   requestTeleport,
   openWithTimeout,
   clearIssue,
+  beat,
   sleep,
   fmtPos,
 } = require('./common')
@@ -91,6 +92,7 @@ async function workLoop(bot) {
 
   while (!bot.stopped) {
     try {
+      beat(bot) // señal de vida para el vigilante de bloqueos (common.js)
       // Órdenes del panel: "Organizar ahora" hace una ronda; "Volver a casa"/"Rescatar" vuelven al almacén.
       // Un pedido no se pierde aunque otra orden lo haya pisado: se atiende después.
       if (!bot.pendingCommand && bot.pendingRequest) bot.pendingCommand = 'request'
