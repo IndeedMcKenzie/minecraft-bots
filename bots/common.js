@@ -849,7 +849,10 @@ function findChestSpots(bot, existing) {
  * bloques en el panel lo congelaba varios segundos para los 6 bots; el servidor lo hace en otro hilo y no carga
  * chunks. Devuelve posiciones (Vec3) de la más cercana a la más lejana, o null si el plugin no está o no responde
  * (entonces cada bot usa su búsqueda local de siempre).
- * opts: { types: [nombres], center?, radius, count?, minY?, maxY?, mature?, bottom? }
+ * El servidor aplica los mismos filtros que el bot (bloques descartados y zonas de atasco, que se le mandan, y
+ * opcionalmente suelo natural bajo un tronco), para no devolver candidatos que el bot tiraría después.
+ * Busca en el mundo donde está el bot. Si la respuesta llega a `count` resultados, devuelve también saturated=true.
+ * opts: { types: [nombres], center?, radius, count?, minY?, maxY?, mature?, bottom?, groundBelow? }
  */
 async function serverFindBlocks(bot, opts) {
   if (!bot.entity) return null
@@ -857,12 +860,29 @@ async function serverFindBlocks(bot, opts) {
     const link = require('../panel/serverlink') // aquí: serverlink usa módulos que dependen de este archivo
     if (!link.isOnline()) return null
     const c = (opts.center || bot.entity.position).floored()
-    const r = await link.findBlocks({ x: c.x, y: c.y, z: c.z, radius: opts.radius, types: opts.types, count: opts.count || 64,
-      minY: opts.minY, maxY: opts.maxY, mature: !!opts.mature, bottom: !!opts.bottom })
-    return r.positions.map(([x, y, z]) => new Vec3(x, y, z))
+    const count = opts.count || 64
+    const r = await link.findBlocks({ player: bot.username, x: c.x, y: c.y, z: c.z, radius: opts.radius, types: opts.types, count,
+      minY: opts.minY, maxY: opts.maxY, mature: !!opts.mature, bottom: !!opts.bottom, groundBelow: opts.groundBelow,
+      exclude: excludedSpheres(bot) })
+    const positions = r.positions.map(([x, y, z]) => new Vec3(x, y, z))
+    positions.saturated = positions.length >= count
+    return positions
   } catch {
     return null
   }
+}
+
+// Bloques descartados (vigentes) y zonas de atasco del bot, como esferas [x, y, z, radio] para el servidor
+function excludedSpheres(bot) {
+  const now = Date.now()
+  const out = []
+  for (const [key, until] of bot.badBlocks || []) {
+    if (until < now) continue
+    const [x, y, z] = key.replace(/[()\s]/g, '').split(',').map(Number)
+    if (![x, y, z].some(Number.isNaN)) out.push([x, y, z, 0])
+  }
+  for (const zone of bot.stuckZones || []) if (zone.until > now) out.push([zone.pos.x, zone.pos.y, zone.pos.z, STUCK_ZONE_RADIUS])
+  return out.slice(-300) // los más recientes; de sobra para lo que se acumula en unos minutos
 }
 
 // ── Espera sin gastar CPU ────────────────────────────────────

@@ -64,6 +64,9 @@ final class PanelApi {
     private final byte[] token;
     private HttpServer server;
     private ExecutorService executor;
+    // Carril aparte para /find: una búsqueda puede tardar varios ticks y no debe dejar en cola al estado,
+    // los teletransportes ni la consola (si /status no responde, el panel cree que el plugin se ha caído)
+    private ExecutorService findLane;
 
     PanelApi(BotHelper plugin, int port, String token) {
         this.plugin = plugin;
@@ -79,19 +82,28 @@ final class PanelApi {
             t.setDaemon(true);
             return t;
         });
+        findLane = Executors.newFixedThreadPool(2, r -> {
+            Thread t = new Thread(r, "BotHelper-Find");
+            t.setDaemon(true);
+            return t;
+        });
         server.setExecutor(executor);
         server.createContext("/status", ex -> handle(ex, "GET", body -> status()));
         server.createContext("/chests", ex -> handle(ex, "POST", this::chests));
         server.createContext("/command", ex -> handle(ex, "POST", this::command));
         server.createContext("/events", ex -> handle(ex, "POST", this::events));
         server.createContext("/teleport", ex -> handle(ex, "POST", this::teleport));
-        server.createContext("/find", ex -> handle(ex, "POST", this::find));
+        // El hilo HTTP solo entrega la petición al carril de búsquedas y queda libre al momento
+        server.createContext("/find", ex -> findLane.execute(() -> {
+            try { handle(ex, "POST", this::find); } catch (IOException ignored) { }
+        }));
         server.start();
     }
 
     void stop() {
         if (server != null) server.stop(0);
         if (executor != null) executor.shutdownNow();
+        if (findLane != null) findLane.shutdownNow();
     }
 
     private interface Handler {
@@ -258,12 +270,24 @@ final class PanelApi {
     private final BlockFinder finder;
 
     private Object find(JsonObject body) throws Exception {
-        World w = Bukkit.getWorld(body.has("world") ? body.get("world").getAsString() : "world");
-        if (w == null) return Map.of("ok", false, "error", "Mundo desconocido");
-        List<String> names = new ArrayList<>();
-        for (var e : body.getAsJsonArray("types")) names.add(e.getAsString());
-        var types = BlockFinder.materials(names);
+        // Mundo: el del bot que busca (si está en el Nether, se busca allí); si no, el que se indique o el principal
+        World w = null;
+        if (body.has("player")) {
+            Player p = Bukkit.getPlayerExact(body.get("player").getAsString());
+            if (p != null) w = p.getWorld();
+        }
+        if (w == null && body.has("world")) w = Bukkit.getWorld(body.get("world").getAsString());
+        if (w == null) w = Bukkit.getWorlds().get(0);
+        var types = BlockFinder.materials(strings(body, "types"));
         if (types.isEmpty()) return Map.of("ok", false, "error", "Ningún tipo de bloque válido");
+        var ground = body.has("groundBelow") ? BlockFinder.materials(strings(body, "groundBelow")) : null;
+        List<double[]> exclude = new ArrayList<>();
+        if (body.has("exclude")) {
+            for (var e : body.getAsJsonArray("exclude")) {
+                var a = e.getAsJsonArray();
+                exclude.add(new double[] { a.get(0).getAsDouble(), a.get(1).getAsDouble(), a.get(2).getAsDouble(), a.size() > 3 ? a.get(3).getAsDouble() : 0 });
+            }
+        }
         return finder.find(new BlockFinder.Request(w,
             body.get("x").getAsInt(), body.get("y").getAsInt(), body.get("z").getAsInt(),
             body.has("radius") ? body.get("radius").getAsInt() : 32, types,
@@ -271,7 +295,14 @@ final class PanelApi {
             body.has("minY") ? body.get("minY").getAsInt() : Integer.MIN_VALUE,
             body.has("maxY") ? body.get("maxY").getAsInt() : Integer.MAX_VALUE,
             body.has("mature") && body.get("mature").getAsBoolean(),
-            body.has("bottom") && body.get("bottom").getAsBoolean()));
+            body.has("bottom") && body.get("bottom").getAsBoolean(),
+            ground, exclude));
+    }
+
+    private static List<String> strings(JsonObject body, String key) {
+        List<String> out = new ArrayList<>();
+        for (var e : body.getAsJsonArray(key)) out.add(e.getAsString());
+        return out;
     }
 
     // ── /teleport ────────────────────────────────────────────

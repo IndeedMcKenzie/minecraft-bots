@@ -195,21 +195,29 @@ async function fellTree(bot, mcData, baseBlock) {
   return count
 }
 
-// ── Verificar que es la base de un árbol en tierra natural ───
-// Tronco más cercano que sea la base de un árbol: lo busca el servidor (plugin) y, si no está, el bot
+// ── Buscar un árbol ──────────────────────────────────────────
+// Tronco más cercano que sea la base de un árbol sobre suelo natural. Lo busca el servidor (plugin) con los mismos
+// filtros (suelo natural, descartados y zonas de atasco) y, si no está, el bot como siempre
 async function findTree(bot, mcData) {
   const usable = block => block && !isBad(bot, block.position) && !inStuckZone(bot, block.position) && isBottomLog(bot, block)
-  const remote = await serverFindBlocks(bot, { types: LOG_TYPES, radius: cfg.search.woodRadius, count: 48, bottom: true })
-  if (remote) return remote.map(p => bot.blockAt(p)).find(usable) || null
-  const logIds = LOG_TYPES.map(n => mcData.blocksByName[n]?.id).filter(Boolean)
-  return bot.findBlock({ matching: logIds, maxDistance: cfg.search.woodRadius, useExtraInfo: usable })
+  const localSearch = () => {
+    const logIds = LOG_TYPES.map(n => mcData.blocksByName[n]?.id).filter(Boolean)
+    return bot.findBlock({ matching: logIds, maxDistance: cfg.search.woodRadius, useExtraInfo: usable })
+  }
+  const remote = await serverFindBlocks(bot, { types: LOG_TYPES, radius: cfg.search.woodRadius, count: 48, bottom: true, groundBelow: NATURAL_GROUND })
+  if (!remote) return localSearch()
+  const found = remote.map(p => bot.blockAt(p)).find(usable)
+  // Si el bot descartó todo lo que mandó el servidor y había más, búsqueda local de respaldo
+  return found || (remote.saturated ? localSearch() : null)
 }
+
+// ── Verificar que es la base de un árbol en tierra natural ───
+const NATURAL_GROUND = ['grass_block', 'dirt', 'podzol', 'mycelium', 'rooted_dirt', 'moss_block', 'mud', 'coarse_dirt']
 
 function isBottomLog(bot, block) {
   const below = bot.blockAt(block.position.offset(0, -1, 0))
   if (!below) return false
-  return ['grass_block', 'dirt', 'podzol', 'mycelium', 'rooted_dirt',
-          'moss_block', 'mud', 'coarse_dirt'].includes(below.name)
+  return NATURAL_GROUND.includes(below.name)
 }
 
 // ── Replantar plántula en la misma base ──────────────────────

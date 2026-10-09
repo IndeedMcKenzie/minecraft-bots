@@ -179,20 +179,27 @@ async function findBestOre(bot, mcData, pickType) {
 
   // Nunca en las últimas capas: la roca madre aparece mezclada y el minero puede quedar encerrado sin salida
   const usable = (b) => b && b.position.y >= MIN_ORE_Y && !isBad(bot, b.position) && !inStuckZone(bot, b.position) && !!b.canHarvest(pickType)
-  // Lo busca el servidor (plugin); si no está, el bot como siempre
-  const remote = await serverFindBlocks(bot, { types: ORE_PRIORITY, radius: cfg.search.mineRadius, count: 128, minY: MIN_ORE_Y })
-  const positions = remote
-    ? remote.filter(p => usable(bot.blockAt(p)))
-    : bot.findBlocks({ matching: [...priority.keys()], maxDistance: cfg.search.mineRadius, count: 64, useExtraInfo: usable })
-  if (positions.length === 0) return null
+  const localSearch = () => bot.findBlocks({ matching: [...priority.keys()], maxDistance: cfg.search.mineRadius, count: 64, useExtraInfo: usable })
+    .map(p => bot.blockAt(p))
+
+  // Lo busca el servidor (plugin), solo entre los minerales que este pico puede picar y sin los descartados ni las
+  // zonas de atasco (se los manda serverFindBlocks), así que lo que devuelve ya vale; si no está, el bot como siempre
+  const types = ORE_PRIORITY.filter(name => {
+    const b = mcData.blocksByName[name]
+    return b && (!b.harvestTools || (pickType != null && b.harvestTools[pickType]))
+  })
+  if (types.length === 0) return null
+  const remote = await serverFindBlocks(bot, { types, radius: cfg.search.mineRadius, count: 128, minY: MIN_ORE_Y })
+  let candidates = remote ? remote.map(p => bot.blockAt(p)).filter(usable) : localSearch().filter(Boolean)
+  // Si aun así el bot descartó todo lo que mandó el servidor y había más, búsqueda local de respaldo
+  if (remote && candidates.length === 0 && remote.saturated) candidates = localSearch().filter(Boolean)
+  if (candidates.length === 0) return null
 
   const here = bot.entity.position
   let best = null
   let bestScore = Infinity
-  for (const p of positions) {
-    const block = bot.blockAt(p)
-    if (!block) continue
-    const score = priority.get(block.type) * 1000 + p.distanceTo(here)
+  for (const block of candidates) {
+    const score = priority.get(block.type) * 1000 + block.position.distanceTo(here)
     if (score < bestScore) { bestScore = score; best = block }
   }
   return best

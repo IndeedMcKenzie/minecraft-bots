@@ -144,8 +144,10 @@ async function harvestMatureCrops(bot, mcData) {
   let harvested = 0
   let unreachable = 0
   let missedInARow = 0
+  // Una sola búsqueda en el servidor para todos los cultivos (null: sin plugin, cada cultivo se busca en local)
+  const remote = await serverFindBlocks(bot, { types: CROPS.map(c => c.name), center: farmCenter(bot), radius: FARM_RADIUS(), count: 256, mature: true })
   for (const crop of CROPS) {
-    const matureBlocks = await findMatureCrops(bot, mcData, crop)
+    const matureBlocks = findMatureCrops(bot, mcData, crop, remote)
     for (const block of matureBlocks) {
       if (bot.stopped) return harvested
       const reached = await safeGoto(bot, new GoalNear(block.position.x, block.position.y, block.position.z, 1), 10)
@@ -202,13 +204,13 @@ function matureStateIds(bot, crop) {
   return ids
 }
 
-async function findMatureCrops(bot, mcData, crop) {
+// remote: posiciones de cultivos maduros de todos los tipos que ya buscó el servidor (null: buscar aquí)
+function findMatureCrops(bot, mcData, crop, remote) {
   const ids = matureStateIds(bot, crop)
   if (ids.size === 0) return []
 
-  // Lo busca el servidor (plugin); si no está, el bot como siempre (más abajo)
-  const remote = await serverFindBlocks(bot, { types: [crop.name], center: farmCenter(bot), radius: FARM_RADIUS(), count: 64, mature: true })
-  if (remote) return remote.filter(p => !isBad(bot, p)).map(p => bot.blockAt(p)).filter(b => b && ids.has(b.stateId))
+  // Del servidor (plugin) se quedan los de este cultivo (el estado lo comprueba ids); si no está, el bot como siempre
+  if (remote) return remote.filter(p => !isBad(bot, p)).map(p => bot.blockAt(p)).filter(b => b && ids.has(b.stateId)).slice(0, 64)
 
   // Buscar por TIPO de bloque deja que mineflayer descarte secciones enteras mirando solo su paleta; la edad
   // se comprueba después solo en los cultivos encontrados. (Con una función en 'matching' se construía un
