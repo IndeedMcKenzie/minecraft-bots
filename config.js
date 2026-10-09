@@ -102,7 +102,7 @@ module.exports = {
   // Cada vez que un bot aparece (también al reaparecer tras morir): escala 0.9999 (arregla un fallo de las físicas de
   // salto de mineflayer en 1.21+) y saturación infinita (así nunca necesita comer). Con el plugin BotHelper 1.5 se
   // aplica sin comandos y no sale en el chat de los OP; sin él, con /attribute y /effect (los bots deben ser OP:
-  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Artesano)
+  //   op Bot_Lenador | op Bot_Minero | op Bot_Granjero | op Bot_Pescador | op Bot_Organizador | op Bot_Artesano | op Bot_Cazador)
   botStart: { scale: 0.9999, saturation: true },
   // Comandos extra que ejecuta cada bot al aparecer ({username} = su nombre). Estos sí salen en el chat de los OP
   starterCommands: [],
@@ -128,7 +128,7 @@ module.exports = {
     // colchón si se queda sin sitio. ¡Si ese cofre tiene cosas tuyas, las moverá! Por eso viene apagado.
     inbox: false,
     // Lo que NUNCA saca de las casas de los otros bots (son sus herramientas de repuesto)
-    protect: ['*_pickaxe', '*_axe', '*_hoe', '*_shovel', '*_sword', 'fishing_rod', 'shears'],
+    protect: ['*_pickaxe', '*_axe', '*_hoe', '*_shovel', '*_sword', 'fishing_rod', 'shears', 'bow'],
     // Categorías en orden: cada objeto va a la primera que encaje (* = cualquier texto).
     // El nombre es lo que se escribe en el cartel del cofre. Puedes añadir, quitar o reordenar.
     categories: {
@@ -157,8 +157,8 @@ module.exports = {
   smith: {
     checkMinutes: 10,      // Cada cuánto revisa los repuestos
     sparesPerBot: 1,       // Herramientas de repuesto que debe haber en la casa de cada bot
-    // Qué herramienta necesita cada bot
-    tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod' },
+    // Qué herramienta necesita cada bot (una lista si son varias)
+    tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod', hunter: ['sword', 'bow'] },
     tiers: ['diamond', 'iron', 'stone'], // material preferido (si no hay, el siguiente)
   },
 
@@ -167,12 +167,25 @@ module.exports = {
     searchRadius: 32,    // Busca agua abierta a esta distancia de su casa
   },
 
+  // Cazador: caza monstruos con espada y arco. Todo esto se cambia en vivo desde el panel (su tarjeta o la pestaña
+  // ⚙️ Ajustes) y el modo también desde el juego: !cazador sigueme | explora | auto | ven | casa
+  hunter: {
+    // 'follow': va con `player` y lo protege (si no está conectado, vigila su casa)
+    // 'explore': recorre su zona del mapa (o los alrededores de su casa) cazando lo que encuentra
+    // 'auto': sigue a `player` mientras está conectado; si no, explora
+    mode: 'auto',
+    player: 'IndeedMcKenzie',
+    guardRadius: 16,     // siguiendo a alguien (o vigilando su casa): caza los monstruos a esta distancia
+    exploreRadius: 160,  // explorando sin zona: hasta esta distancia de su casa (más = más mundo cargado y por dibujar en BlueMap)
+    useBow: true,        // arco contra los lejanos (con flechas; no dispara si hay alguien en la trayectoria)
+  },
+
   // Bots disponibles (nombre en el servidor). home opcional: { x, y, z } de su cofre.
   // viewDistance por bot: chunks que pide al servidor (número, o 'tiny' 6 / 'short' 8 / 'normal' 10). Menos chunks =
   // menos CPU y RAM en el panel y menos trabajo para el servidor (con el plugin BotHelper 1.5 el servidor también
   // carga solo esa distancia alrededor del bot, no la view-distance de server.properties). Debe cubrir lo que busca cada bot (1 chunk = 16 bloques):
-  // leñador 96 bloques → 6, minero 64 → 5, granjero 48 → 4, pescador 32 → 3; el organizador tiene que ver todo el
-  // almacén (súbelo si el almacén pasa de ~80 bloques de radio).
+  // leñador 96 bloques → 6, minero 64 → 5, granjero 48 → 4, pescador 32 → 3, cazador → 4 (ve monstruos a unos 64
+  // bloques); el organizador tiene que ver todo el almacén (súbelo si el almacén pasa de ~80 bloques de radio).
   // give: lo que entrega el botón "Dar herramienta" del panel con /give (el bot debe ser OP).
   bots: {
     woodcutter: { username: 'Bot_Lenador',  home: null, viewDistance: 6, stuckWatch: true, pathfinderTickMs: 40, give: [{ item: 'diamond_axe', count: 1 }] },
@@ -181,5 +194,8 @@ module.exports = {
     fisher:     { username: 'Bot_Pescador', home: null, give: [{ item: 'fishing_rod', count: 1 }], viewDistance: 3 }, // no explora: carga menos chunks
     organizer:  { username: 'Bot_Organizador', home: null, autoHome: false, viewDistance: 5, pathfinderTickMs: 40 }, // su casa es el almacén central (la eliges tú)
     artisan:    { username: 'Bot_Artesano', home: null, autoHome: false, viewDistance: 4 }, // funde, cocina y fabrica herramientas; su casa es el taller (la eliges tú)
+    // Caza monstruos. canDig: false = no rompe ni pone bloques para abrirse paso (camina por tu base); su casa la eliges tú
+    hunter:     { username: 'Bot_Cazador', home: null, autoHome: false, canDig: false, viewDistance: 4,
+                  give: [{ item: 'diamond_sword', count: 1 }, { item: 'bow', count: 1 }, { item: 'arrow', count: 64 }] },
   },
 }

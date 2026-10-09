@@ -1,5 +1,5 @@
 // ============================================================
-//  panel.js — Panel de control: ejecuta los 3 bots en un solo
+//  panel.js — Panel de control: ejecuta todos los bots en un solo
 //  proceso y sirve la interfaz en http://127.0.0.1:<puerto>
 // ============================================================
 const http = require('http')
@@ -27,12 +27,13 @@ const BOT_DEFS = [
   { key: 'fisher',     label: 'Pescador', emoji: '🎣', file: './bots/fisher'     },
   { key: 'organizer',  label: 'Organizador', emoji: '🗂️', file: './bots/organizer' },
   { key: 'artisan',    label: 'Artesano', emoji: '🛠️', file: './bots/artisan'    },
+  { key: 'hunter',     label: 'Cazador',  emoji: '🏹', file: './bots/hunter'     },
 ]
 const DEF_BY_KEY = Object.fromEntries(BOT_DEFS.map(d => [d.key, d]))
 // Color de cada bot en el mapa (recorridos y zonas): distintos entre sí y visibles sobre el terreno
-const BOT_COLORS = { woodcutter: '#e8a33d', miner: '#e5484d', farmer: '#46a758', fisher: '#3e8ed0', organizer: '#8e4ec6', artisan: '#d6409f' }
-// Bots que pueden tener zona de trabajo (los demás trabajan en su casa)
-const ZONE_BOTS = ['woodcutter', 'miner', 'farmer']
+const BOT_COLORS = { woodcutter: '#e8a33d', miner: '#e5484d', farmer: '#46a758', fisher: '#3e8ed0', organizer: '#8e4ec6', artisan: '#d6409f', hunter: '#12a594' }
+// Bots que pueden tener zona de trabajo (los demás trabajan en su casa). La del Cazador es donde explora
+const ZONE_BOTS = ['woodcutter', 'miner', 'farmer', 'hunter']
 
 // ── Captura de logs ──────────────────────────────────────────
 // Los bots escriben con console.log("[Minero] ..."): el prefijo indica de qué bot es
@@ -65,7 +66,7 @@ function addLog(level, text) {
   broadcast('log', entry)
 }
 
-// Con los 3 bots en el mismo proceso, un error no capturado de uno no debe tumbar a los demás
+// Con todos los bots en el mismo proceso, un error no capturado de uno no debe tumbar a los demás
 process.on('uncaughtException', (err) => console.error(`[Panel] ❌ Error no capturado: ${err.stack || err.message}`))
 process.on('unhandledRejection', (err) => console.error(`[Panel] ❌ Promesa rechazada: ${err && (err.stack || err.message) || err}`))
 
@@ -267,7 +268,14 @@ function botState(def) {
     home: home ? { x: Math.floor(home.x), y: Math.floor(home.y), z: Math.floor(home.z) } : null,
     zone: ZONE_BOTS.includes(def.key) ? zoneOf(def.key) : undefined,
     color: BOT_COLORS[def.key],
+    // Cazador: qué tiene que hacer (ajustes) y qué está haciendo
+    hunt: def.key === 'hunter' ? huntInfo(bot, online) : undefined,
   }
+}
+
+function huntInfo(bot, online) {
+  const h = cfg.hunter || {}
+  return { mode: h.mode || 'auto', player: h.player || '', state: online ? (bot.huntState || null) : null }
 }
 
 function zoneOf(key) {
@@ -339,7 +347,7 @@ async function pushMapMarkers() {
 
 const startedAt = Date.now()
 
-// Retraso del bucle del panel (lo que tardan en atenderse los timers): con los 6 bots en este proceso,
+// Retraso del bucle del panel (lo que tardan en atenderse los timers): con todos los bots en este proceso,
 // un retraso alto significa que ningún bot puede reaccionar ni enviar nada mientras dura
 const { monitorEventLoopDelay } = require('perf_hooks')
 const loopDelay = monitorEventLoopDelay({ resolution: 20 })
@@ -479,7 +487,7 @@ async function handleSettings(req, res) {
 async function handleZone(req, res) {
   const body = await readJson(req)
   const key = body && String(body.bot || '')
-  if (!ZONE_BOTS.includes(key)) return sendJson(res, 400, { ok: false, error: 'Solo el Leñador, el Minero y el Granjero tienen zona de trabajo' })
+  if (!ZONE_BOTS.includes(key)) return sendJson(res, 400, { ok: false, error: 'Solo el Leñador, el Minero, el Granjero y el Cazador tienen zona' })
   const common = require('./bots/common')
   const label = DEF_BY_KEY[key].label
   if (body.clear) {
@@ -686,7 +694,7 @@ server.listen(PORT, HOST, () => {
   checkServer()
   setInterval(checkServer, SERVER_CHECK_MS)
   serverlink.start()
-  // Medidor de bloqueos: los 6 bots comparten este proceso; si se queda congelado, ninguno envía nada
+  // Medidor de bloqueos: todos los bots comparten este proceso; si se queda congelado, ninguno envía nada
   let lastBeat = Date.now()
   setInterval(() => {
     const lag = Date.now() - lastBeat - 250

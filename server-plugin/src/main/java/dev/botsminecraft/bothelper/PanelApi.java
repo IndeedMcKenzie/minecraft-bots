@@ -69,7 +69,7 @@ final class PanelApi {
     private static final int MAX_BODY = 1 << 20;
     // Lo que sabe hacer esta versión: el panel lo mira para usar cada cosa solo si existe
     private static final List<String> FEATURES = List.of("find", "find-immature", "markers", "teleport-surface",
-        "botstart", "give", "bot-view-distance", "cleanup");
+        "botstart", "give", "bot-view-distance", "cleanup", "hunters", "mob-loot", "teleport-main-world");
 
     private final BotHelper plugin;
     private final int port;
@@ -187,6 +187,7 @@ final class PanelApi {
                 Location l = p.getLocation();
                 Map<String, Object> info = new LinkedHashMap<>(Map.of("name", p.getName(), "bot", plugin.isBot(p), "world", l.getWorld().getName(),
                     "x", l.getBlockX(), "y", l.getBlockY(), "z", l.getBlockZ(), "health", round(p.getHealth())));
+                info.put("gamemode", p.getGameMode().name()); // el Cazador no sigue a un espectador (atraviesa paredes)
                 if (plugin.isBot(p) && plugin.assist() != null) info.putAll(plugin.assist().info(p));
                 if (plugin.isBot(p)) info.put("viewDistance", p.getViewDistance());
                 players.add(info);
@@ -330,8 +331,9 @@ final class PanelApi {
     }
 
     // ── /teleport ────────────────────────────────────────────
-    // { player, x, y, z, world? } o { player, to: "OtroJugador" }. Sin comando de chat: no aparece "[Bot: Teleported…]"
-    // en el chat de los OP ni en la consola, y el bot no necesita ser OP para esto.
+    // { player, x, y, z, world?, surface? } (sin world: el mundo principal) o { player, to: "OtroJugador", sameWorld? }.
+    // Sin comando de chat: no aparece "[Bot: Teleported…]" en el chat de los OP ni en la consola, y el bot no necesita
+    // ser OP para esto.
 
     private Object teleport(JsonObject body) throws Exception {
         String name = body.get("player").getAsString();
@@ -343,9 +345,15 @@ final class PanelApi {
             if (body.has("to")) {
                 Player target = Bukkit.getPlayerExact(body.get("to").getAsString());
                 if (target == null) return Map.of("ok", false, "error", "Ese jugador no está conectado");
+                // sameWorld (el Cazador siguiendo a alguien): no ir tras él al Nether o al End
+                if (body.has("sameWorld") && body.get("sameWorld").getAsBoolean() && !target.getWorld().equals(p.getWorld())) {
+                    return Map.of("ok", false, "error", "Está en otro mundo");
+                }
                 dest = target.getLocation();
             } else {
-                World w = body.has("world") ? Bukkit.getWorld(body.get("world").getAsString()) : p.getWorld();
+                // Sin mundo: el principal (ahí están todas las casas y zonas). Con el mundo del bot, uno que hubiera
+                // cruzado un portal (el Cazador siguiendo al jugador) iría a esas coordenadas del Nether
+                World w = body.has("world") ? Bukkit.getWorld(body.get("world").getAsString()) : Bukkit.getWorlds().get(0);
                 if (w == null) return Map.of("ok", false, "error", "Mundo desconocido");
                 double x = body.get("x").getAsDouble(), z = body.get("z").getAsDouble();
                 // surface: encima del bloque más alto de esa columna (zona de trabajo elegida en el mapa: la altura

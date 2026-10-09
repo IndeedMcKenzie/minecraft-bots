@@ -2,7 +2,7 @@
 
 **English** · [Español](README.es.md)
 
-Six bots built with **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) that work on their own
+Seven bots built with **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) that work on their own
 on a Paper server and are controlled from a **single-window web panel**:
 
 | Bot | Username | What it does |
@@ -13,10 +13,12 @@ on a Paper server and are controlled from a **single-window web panel**:
 | 🎣 Fisher | `Bot_Pescador` | Fishes non-stop in open water near its home |
 | 🗂️ Organizer | `Bot_Organizador` | Collects what the others store and sorts it into a central warehouse with labeled chests |
 | 🛠️ Artisan | `Bot_Artesano` | Smelts ores, cooks food and crafts spare tools for the other bots |
+| 🏹 Hunter | `Bot_Cazador` | Hunts monsters with sword and bow: follows and protects you, or explores on its own |
 
 **Highlights:** every bot has its own home and chests and returns to store items when its inventory fills
 up · adds chests automatically · rescues itself when stuck in a cave · an organizer moves everything into
-a warehouse sorted by category · live web panel with status, action buttons and statistics.
+a warehouse sorted by category · a hunter whose bow accounts for arrow drop · live web panel with status, action
+buttons and statistics.
 
 > 🇪🇸 The bots were written for a Spanish-speaking server: **the panel, logs and in-game chat commands are in
 > Spanish** (e.g. `!casa`). The code is commented in Spanish too. Everything is explained below.
@@ -44,13 +46,14 @@ the 1.21.4 protocol).
    op Bot_Pescador
    op Bot_Organizador
    op Bot_Artesano
+   op Bot_Cazador
    ```
 4. **Start the panel:** on Windows, double-click **`abrir_panel.bat`**. On any OS: `npm start` and open
    `http://127.0.0.1:3000`.
 5. **Homes:** each bot adopts the nearest chest as its home when it spawns. To choose it yourself, teleport the
    bot next to a chest and type `!casa <bot>` in chat (or press **🏠 Fijar casa** in the panel).
-   The **Organizer** and the **Artisan** never pick one on their own: you choose their home (the warehouse /
-   the workshop).
+   The **Organizer**, the **Artisan** and the **Hunter** never pick one on their own: you choose their home (the
+   warehouse / the workshop / the chest where it drops its loot).
 
 > ⚠️ **Security:** in *offline* mode, anyone who joins with a bot's name gets its OP permissions. Use this on
 > private servers or protect those names (see "Good to know").
@@ -59,7 +62,7 @@ the 1.21.4 protocol).
 
 ## 🖥️ Control panel
 
-`abrir_panel.bat` (or `npm start`) runs all 6 bots in **a single process** (`panel.js`, less RAM) and serves the
+`abrir_panel.bat` (or `npm start`) runs all 7 bots in **a single process** (`panel.js`, less RAM) and serves the
 UI at `http://127.0.0.1:3000`.
 
 - **From another computer on your network:** set `panel.host: '0.0.0.0'` in `config.js` and add its IP to
@@ -79,6 +82,8 @@ UI at `http://127.0.0.1:3000`.
   seeds…). `cobblestone ×39 (🔒32)` means it keeps 32 and will store 7.
 - `📦 N to store · last stored X ago`.
 - **Alerts** (see below); the card border turns yellow or red when it has any.
+- 🏹 The **Hunter** also has a selector for what it does (**Automático**, **Seguir** / follow or **Explorar** /
+  explore) and shows what it's doing right now.
 
 ### Per-bot buttons
 | Button | What it does |
@@ -119,14 +124,14 @@ Saved to `data/almacen_inventario.json`.
 ### 📊 Statistics tab
 Switch between **🤖 Bots** and **📊 Estadísticas** at the top (or open `http://127.0.0.1:3000/#stats`),
 for **this session** or **all time**:
-- **Key figures:** trees chopped, ores mined (and diamonds), crops harvested, fish caught, calves born,
-  items stored and items sorted by the organizer.
+- **Key figures:** trees chopped, ores mined (and diamonds), crops harvested, fish caught, items smelted, tools
+  crafted, items stored, items sorted by the organizer and monsters hunted (with arrows shot and hit rate).
 - **Hourly chart** of items stored at home (last 24 h); hover for a per-bot breakdown.
 - **Per-bot output per hour:** one chart per bot with its main job (trees, ores, crops, catches, items sorted,
-  items smelted) over the last 24 h; it warns if the last hour was far below the bot's average.
+  items smelted, monsters hunted) over the last 24 h; it warns if the last hour was far below the bot's average.
 - **Per-bot table:** time online, items stored, trips home, teleports, times stuck, chests placed,
   deaths and kicks.
-- **Breakdowns:** ores by type, catches by type and warehouse by category.
+- **Breakdowns:** ores by type, catches by type, warehouse by category and hunted monsters by type.
 
 Saved to `data/stats.json` (every minute and on shutdown). Delete that file to start over.
 
@@ -136,9 +141,10 @@ Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#
 `config.js` → `panel.bluemapUrl` (`null` = no tab). The panel serves BlueMap from its own address
 (`/bluemap/`), so other computers don't need BlueMap's port.
 
-- **🎯 Work zone:** pick the woodcutter, miner or farmer and a radius, move the map until the **centre cross** is
-  over the spot and press **«Fijar en la cruz»**. The woodcutter and miner then only work inside that circle (if
-  they're outside, they go there by /tp onto the ground or on foot) and the farmer uses it as its farm. They still
+- **🎯 Work zone:** pick the woodcutter, miner, farmer or hunter and a radius, move the map until the **centre
+  cross** is over the spot and press **«Fijar en la cruz»**. The woodcutter and miner then only work inside that
+  circle (if they're outside, they go there by /tp onto the ground or on foot), the farmer uses it as its farm and the
+  hunter, when exploring, hunts inside it. They still
   store at home. «Quitar zona» brings them back to normal. Saved in `data/zones.json`.
 - **Trails, homes and zones on the map** (with the BotHelper 1.4 plugin): each bot's path over the **last hour**
   (a line in its colour), its home and its zone. They can be hidden in BlueMap's layer menu.
@@ -147,7 +153,8 @@ Shows the **BlueMap** website inside the panel (or open `http://127.0.0.1:3000/#
 Change without restarting anything the woodcutter's, miner's and farmer's search radii, **which ores the miner
 looks for and in what order**, whether the farmer expands its farm and uses the composter, from what distance they go
 home by /tp, the organizer's interval, how many free slots
-the bots keep before going home, the server rescue and the Discord alerts. Changes are saved in
+the bots keep before going home, **what the hunter does** (auto, follow or explore), who it follows, how far it guards and
+explores and whether it uses the bow, the server rescue and the Discord alerts. Changes are saved in
 `data/settings.json` and applied on top of `config.js`; «Restablecer» goes back to its value.
 
 ### 🖥️ Console tab
@@ -166,7 +173,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 
 | | |
 |---|---|
-| ⚡ Performance | Bots **don't spawn mobs** around them and **don't count for sleeping** |
+| ⚡ Performance | Bots **don't spawn mobs** around them (except the hunter) and **don't count for sleeping** |
 | 🎣 Fishing | Whatever a bot catches **appears at its feet** instead of flying towards it (from some shores it hit the edge, fell into the water and was lost) |
 | 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out** |
 | 🧱 Chests | Bots **can't place solid blocks on top of a chest** (a covered chest won't open; for a double chest one half is enough) |
@@ -174,6 +181,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 | 🆘 Rescue | The server knows if a bot is in **lava, fire, suffocating or drowning**, or how long it has been **still** even across reconnects; the panel brings it home (`config.js` → `serverRescue`: miner and woodcutter, 4 min still away from home) |
 | 🔇 Silence | No **join, leave, death or advancement** messages for bots in chat |
 | 🧲 Magnet | Whatever a block broken by a bot drops **appears at its feet** |
+| 🏹 Hunter | For mob spawning it **counts as a player** (monsters spawn around it; otherwise it would find none while exploring). Drops and XP from a monster killed by a bot **go straight into its inventory**. When following a player, teleports **never take it to another world** (Nether, End). `hunters` list in `config.yml` |
 | 🗺️ Map | Draws on **BlueMap** (if installed) each bot's path over the last hour, its home and its work zone |
 | ⚡ Chunks | The server loads around each bot **only the distance it asks for** (`viewDistance` in `config.js`), not `server.properties`' `view-distance`: with 6 bots, from ~3,000 loaded chunks to ~1,000 |
 | 🧹 Mobs | On Paper 26.2 hundreds of mobs per minute spawned around the bots and, since bots don't count for despawning, they piled up by the thousands. Natural spawns of monsters, bats and fish far from real players are now prevented, and every minute **disposable** monsters, bats and fish (unnamed, unleashed, not persistent, not from a bucket) more than 128 blocks from any real player are removed. Animals, villagers, bosses and anything near you are never touched |
@@ -209,8 +217,8 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 - A **home** is a chest (or barrel) plus every chest **within 6 blocks** of it.
 - How it is chosen: `bots.<bot>.home` in config → `chest.position` → `data/home_<bot>.json` → nearest chest on spawn.
 - Bots only use **their own** chests, never random chests they come across.
-- **Going home:** woodcutter and miner return when their inventory is almost full (≤ 2 free slots); farmer
-  and fisher once they have 16 items. They travel in 48-block legs even from hundreds of blocks away.
+- **Going home:** woodcutter, miner and hunter return when their inventory is almost full (≤ 2 free slots); the
+  farmer once it has 128 harvested items and the fisher every 16 catches. They travel in 48-block legs.
   **More than 150 blocks away (or underground) they go home and back with `/tp`** directly (`config.js` →
   `home.teleportDistance`, or the ⚙️ Settings tab); closer, they walk, and if they can't make it within 3 minutes they
   use `/tp`. After storing, they go back to exactly where they were working.
@@ -224,10 +232,11 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 | Miner | 1 pickaxe and 32 cobblestone + 32 cobbled deepslate (for rescue pillars) |
 | Farmer | 1 hoe, 32 wheat seeds, 16 carrots / potatoes / beetroot seeds |
 | Fisher | 1 fishing rod |
+| Hunter | 1 sword of each type, the bow and 192 arrows |
 
 ### 🪓 Woodcutter
-- Finds the base of a tree (radius 96), chops it bottom-up and replants the sapling.
-  If your server has a *Timber*-style plugin (the whole tree falls), the log will say "Talados 1 troncos".
+- Finds the base of a tree (radius 96), chops it bottom-up and replants the sapling. The log says how many logs it
+  gained (with a *Veinminer*- or *Timber*-style plugin the whole tree falls when it breaks the base).
 - Without an axe it chops by hand; when it passes near home without one, it checks the chests.
 - With no trees around it **explores**, keeping a heading.
 
@@ -258,7 +267,7 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 - Every **20 minutes** (or with 🗂️ Organizar ahora) it runs a round:
   1. `/give`s itself 4 chests and 4 signs (material to expand the warehouse).
   2. Teleports to each bot's home and **takes everything except their spare tools**
-     (pickaxes, axes, hoes, shovels, swords, rods, shears). It waits if that bot is storing at that moment.
+     (pickaxes, axes, hoes, shovels, swords, bows, rods, shears). It waits if that bot is storing at that moment.
   3. Returns to the warehouse and puts each item **in its category chest**. Every deposit is verified and retried if the server rejects it.
   4. If a category has no chest or it's full, it **places a new chest with a sign on top** naming the category.
 - Chests are laid out **on a grid with aisles** and never touch (so they don't merge into double chests mixing categories).
@@ -278,8 +287,9 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 - Its home is a chest in the **workshop, near the warehouse** (outside its grid), with ~7 flat free blocks to
   the north for the furnaces and some room on the sides for the crafting table: `!casa artesano`.
 - **Tools (first):** every 10 min it checks that each bot has **1 spare tool** at home: axe (woodcutter),
-  pickaxe (miner), hoe (farmer), and fishing rod (fisher). If one is missing it takes materials
-  from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods),
+  pickaxe (miner), hoe (farmer), fishing rod (fisher) and sword and bow (hunter). If one is missing it takes
+  materials from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods and
+  bows, which the hunter brings back from spiders),
   **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`.
 - **Only goes to the warehouse when what it needs is there:** with the BotHelper plugin it knows what each chest
   holds (read every 30 s), so with nothing to smelt it doesn't travel, and otherwise it only opens those chests.
@@ -289,6 +299,24 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 - It stores the results (ingots, cooked food) and leftover materials in its chest; **the organizer takes them
   to the warehouse**.
 - Tune it in `config.js` → `smelter` (furnaces) and `smith` (tools).
+
+### 🏹 Hunter
+- **What it does** (its panel card, the ⚙️ Settings tab or `!cazador` in game):
+  - **🛡️ Follow:** goes with a player (`hunter.player`) and hunts the monsters that come near (16 blocks). If you
+    get more than 32 blocks away or it loses sight of you, it teleports next to you. It won't follow you to the
+    Nether or the End or while you're in spectator mode: then it guards its home.
+  - **🧭 Explore:** roams around its home (160 blocks) or its **map zone**, hunting whatever it finds.
+  - **🔄 Auto** (default): follows the player while they're online; otherwise it explores.
+- **Sword and bow:** melee with the sword (waiting for its cooldown, like a player) and at range (7–40 blocks) with
+  the bow: it **computes the arrow drop** and leads moving targets. It **never shoots** when a player, another bot, a
+  villager, an animal or a block is in the arrow's path: it walks up and uses the sword instead.
+- **Prey:** zombies, skeletons (and variants), spiders, creepers (first, before they blow something up), witches,
+  slimes, phantoms, pillagers… It **never attacks** endermen, piglins, wardens or anything with a name tag (pets,
+  decorations).
+- **Loot:** with the plugin it goes straight into its inventory (without it, it picks it up from the ground). It
+  stores it at home when full; the organizer moves it to the Mobs category. Out of arrows, it `/give`s itself 64.
+- **It never breaks or places blocks** to get through (`canDig: false`): it can walk around your base safely.
+- Without a sword or bow it goes home for the spare the artisan leaves there.
 
 ### 🆘 Getting unstuck (woodcutter & miner)
 - If a bot spends **90 s away from home without moving more than 3 blocks**, it's considered stuck:
@@ -306,9 +334,15 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 |---|---|
 | `!casa <bot>` | That bot adopts the chest nearest to it (≤ 8 blocks) as its home |
 | `!casa todos` | Same for every bot (each looks near itself) |
+| `!cazador sigueme` | The hunter follows and protects you (follow mode) |
+| `!cazador explora` | The hunter goes exploring and hunting on its own |
+| `!cazador auto` | Follows you while you're online, explores when you're not |
+| `!cazador ven` | Teleports next to you now |
+| `!cazador casa` | Goes home to store what it carries |
 
 `<bot>` can be the Spanish role name (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`,
-`artesano`), the key (`miner`, `woodcutter`, `farmer`, `fisher`, `organizer`, `artisan`) or the username (`Bot_Minero`).
+`artesano`, `cazador`), the key (`miner`, `woodcutter`, `farmer`, `fisher`, `organizer`, `artisan`, `hunter`) or the
+username (`Bot_Minero`).
 
 ---
 
@@ -327,12 +361,13 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (unlimited), `inbox`, `protect`, `categories` |
 | `fishing` | `searchRadius` 32 |
+| `hunter` (Hunter) | `mode` (`auto` / `follow` / `explore`), `player`, `guardRadius` 16, `exploreRadius` 160, `useBow` |
 | `smelter` (Artisan, furnaces) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (what to smelt/cook), `fuels` |
 | `smith` (Artisan, tools) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (each bot's tool), `tiers` (diamond > iron > stone) |
 | `botStart` | On spawn: `scale` 0.9999 (fixes mineflayer's jump physics in 1.21+) and `saturation` (no need to eat). With the plugin, no commands |
 | `starterCommands` | Extra commands each bot runs on spawn (they show up in the OP chat) |
 | `farm` | `autoCreate` (till next to water), `searchWaterRadius`, `compost` (composter) |
-| `bots.<bot>` | `username`, `home` (fixed `{x,y,z}`), `stuckWatch`, `give` (what 🎁 hands out), `viewDistance`, `autoHome`, `pathfinderTickMs` |
+| `bots.<bot>` | `username`, `home` (fixed `{x,y,z}`), `stuckWatch`, `give` (what 🎁 hands out), `viewDistance`, `autoHome`, `pathfinderTickMs`, `canDig` (`false`: never breaks or places blocks while walking) |
 
 ---
 
@@ -345,11 +380,11 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
   bot usernames in `config.js`.
 - **Don't run a bot on its own** (`node bots/<bot>.js`) while the panel is running: both would log in with the
   same name and kick each other in a loop.
-- **Resources:** with all 6 bots the process uses about **500–550 MB of RAM** and around **half a CPU core**
+- **Resources:** with all 7 bots the process uses about **400–450 MB of RAM** and around **half a CPU core**
   while everyone is busy. Path computation is the biggest cost (`performance.pathfinderTickMs`).
 - **If a bot dies**, it respawns at spawn or its bed and goes back to work (with `keepInventory` it loses nothing).
 - **Change a bot's home:** `!casa <bot>` / 🏠 Fijar casa, or delete `data/home_<bot>.json`.
-- **Home chest broken:** the bot forgets that home and adopts another (except organizer and artisan).
+- **Home chest broken:** the bot forgets that home and adopts another (except organizer, artisan and hunter).
 - **Red warnings** in the log are mostly self-explanatory ("¿Es OP?" = is it OP?, "cofres llenos" = chests
   full, "no llego al cofre" = can't reach the chest…). Filter the log by bot to see why it's doing something.
 
@@ -359,7 +394,7 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 
 ```
 abrir_panel.bat        Opens the panel on Windows (recommended)
-panel.js               Manager for the 6 bots + panel server (127.0.0.1:3000)
+panel.js               Manager for the bots + panel server (127.0.0.1:3000)
 panel/index.html       Panel UI
 panel/alerts.js        Bot alerts
 panel/serverlink.js    Link to the BotHelper plugin
@@ -374,10 +409,13 @@ bots/farmer.js         Farmer
 bots/fisher.js         Fisher
 bots/organizer.js      Organizer
 bots/artisan.js        Artisan (furnaces + tools)
+bots/hunter.js         Hunter (sword, bow with trajectory computation, follow or explore)
 bots/warehouse.js      Warehouse access (used by the artisan and orders)
 server-plugin/         BotHelper plugin for Paper (source and build.ps1)
 data/                  Your world's data (created automatically, not committed):
   home_<bot>.json        each bot's home
+  zones.json             work zones chosen on the map
+  settings.json          settings changed from the panel
   almacen.json           category of each organizer chest (backup of the signs)
   stats.json             accumulated statistics
   almacen_inventario.json  contents of each warehouse chest

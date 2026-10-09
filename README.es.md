@@ -2,7 +2,7 @@
 
 [English](README.md) · **Español**
 
-Seis bots hechos con **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) que trabajan solos
+Siete bots hechos con **[Mineflayer](https://github.com/PrismarineJS/mineflayer)** (Node.js) que trabajan solos
 en un servidor Paper y se controlan desde un **panel web en una sola ventana**:
 
 | Bot | Usuario | Qué hace |
@@ -13,10 +13,12 @@ en un servidor Paper y se controlan desde un **panel web en una sola ventana**:
 | 🎣 Pescador | `Bot_Pescador` | Pesca sin parar en agua abierta cerca de su casa |
 | 🗂️ Organizador | `Bot_Organizador` | Recoge lo que guardan los demás y lo ordena en un almacén central con carteles |
 | 🛠️ Artesano | `Bot_Artesano` | Funde minerales, cocina comida y fabrica herramientas de repuesto para los demás bots |
+| 🏹 Cazador | `Bot_Cazador` | Caza monstruos con espada y arco: te sigue y te protege, o explora por su cuenta |
 
 **Destacado:** cada bot tiene casa y cofres propios y vuelve a guardar cuando se le llena el inventario ·
 amplía sus cofres solo · se rescata solo si se atasca en una cueva · un organizador lleva todo a un almacén
-ordenado por categorías · panel con estado en vivo, botones y estadísticas.
+ordenado por categorías · un cazador con arco que calcula la caída de la flecha · panel con estado en vivo, botones
+y estadísticas.
 
 ---
 
@@ -41,12 +43,14 @@ ViaVersion/ViaBackwards (los bots hablan el protocolo 1.21.4).
    op Bot_Pescador
    op Bot_Organizador
    op Bot_Artesano
+   op Bot_Cazador
    ```
 4. **Arranca el panel:** en Windows, doble clic en **`abrir_panel.bat`**. En cualquier sistema:
    `npm start` y abre `http://127.0.0.1:3000`.
 5. **Casas:** cada bot adopta como casa el cofre más cercano al aparecer. Para elegirla tú, hazle TP junto
    a un cofre y escribe `!casa <bot>` en el chat (o pulsa **🏠 Fijar casa** en el panel).
-   El **Organizador** y el **Artesano** no adoptan ninguna: su casa (el almacén o el taller) la eliges tú.
+   El **Organizador**, el **Artesano** y el **Cazador** no adoptan ninguna: su casa (el almacén, el taller o el
+   cofre donde deja lo que caza) la eliges tú.
 
 > ⚠️ **Seguridad:** con el servidor en modo *offline*, cualquiera que entre con el nombre de un bot tendrá
 > sus permisos de OP. Úsalo en servidores privados o protege esos nombres (ver «Cosas a saber»).
@@ -55,7 +59,7 @@ ViaVersion/ViaBackwards (los bots hablan el protocolo 1.21.4).
 
 ## 🖥️ Panel de control
 
-`abrir_panel.bat` (o `npm start`) ejecuta los 6 bots en **un solo proceso** (`panel.js`, menos RAM) y abre
+`abrir_panel.bat` (o `npm start`) ejecuta los 7 bots en **un solo proceso** (`panel.js`, menos RAM) y abre
 la interfaz en `http://127.0.0.1:3000`.
 
 - **Desde otro equipo de tu red:** pon en `config.js` → `panel.host: '0.0.0.0'` y añade su IP a
@@ -75,6 +79,8 @@ la interfaz en `http://127.0.0.1:3000`.
   (herramienta, semillas…). `cobblestone ×39 (🔒32)` significa que se queda 32 y guardará 7.
 - `📦 N por guardar · último guardado hace X`.
 - **Alertas** (ver abajo); el borde de la tarjeta se pone amarillo o rojo si tiene alguna.
+- 🏹 El **Cazador** tiene además un selector con lo que hace (**Automático**, **Seguir** o **Explorar**) y lo que
+  está haciendo en ese momento («Sigo a …», «Cazando: araña»…).
 
 ### Botones de cada bot
 | Botón | Qué hace |
@@ -117,14 +123,15 @@ Se guarda en `data/almacen_inventario.json`.
 Arriba del panel cambias entre **🤖 Bots** y **📊 Estadísticas** (o abre `http://127.0.0.1:3000/#stats`).
 Puedes ver **«Esta sesión»** o **«Desde siempre»**:
 - **Cifras clave:** árboles talados, minerales (y diamantes), cultivos cosechados, capturas de pesca,
-  terneros nacidos, objetos guardados y objetos ordenados por el organizador.
+  fundidos, herramientas fabricadas, objetos guardados, objetos ordenados por el organizador y monstruos cazados
+  (con las flechas disparadas y el % de acierto).
 - **Gráfico por horas** de objetos guardados en casa (últimas 24 h); al pasar el ratón desglosa por bot.
 - **Producción de cada bot por hora:** una gráfica por bot con su trabajo principal (árboles, minerales,
-  cosechas, capturas, objetos ordenados, fundidos) en las últimas 24 h; avisa si la última hora quedó muy por
+  cosechas, capturas, objetos ordenados, fundidos, cazados) en las últimas 24 h; avisa si la última hora quedó muy por
   debajo de su media.
 - **Tabla por bot:** tiempo conectado, objetos guardados, viajes a casa, teletransportes, atascos,
   cofres creados, muertes y expulsiones.
-- **Desgloses:** minerales por tipo, pesca por tipo y almacén por categoría.
+- **Desgloses:** minerales por tipo, pesca por tipo, almacén por categoría y caza por tipo de monstruo.
 
 Se guardan en `data/stats.json` (cada minuto y al apagar). Borra ese archivo para empezar de cero.
 
@@ -134,10 +141,10 @@ tiene un botón **🗺️ Ver en el mapa** que la abre centrada en el bot. Solo 
 abierta. Se configura en `config.js` → `panel.bluemapUrl` (`null` = sin pestaña). El panel sirve BlueMap
 desde su misma dirección (`/bluemap/`), así que desde otro equipo no hace falta abrir el puerto de BlueMap.
 
-- **🎯 Zona de trabajo:** elige el Leñador, el Minero o el Granjero y un radio, mueve el mapa hasta que la **cruz
-  del centro** quede sobre el sitio y pulsa **«Fijar en la cruz»**. El Leñador y el Minero trabajan solo dentro de
-  ese círculo (si están fuera, van con /tp sobre el suelo o caminando) y el Granjero lo usa como su granja. Siguen
-  guardando en su casa. «Quitar zona» los devuelve a lo de siempre. Se guarda en `data/zones.json`.
+- **🎯 Zona de trabajo:** elige el Leñador, el Minero, el Granjero o el Cazador y un radio, mueve el mapa hasta que la
+  **cruz del centro** quede sobre el sitio y pulsa **«Fijar en la cruz»**. El Leñador y el Minero trabajan solo dentro
+  de ese círculo (si están fuera, van con /tp sobre el suelo o caminando), el Granjero lo usa como su granja y el
+  Cazador, cuando explora, caza dentro de él. Siguen guardando en su casa. «Quitar zona» los devuelve a lo de siempre. Se guarda en `data/zones.json`.
 - **Recorridos, casas y zonas en el mapa** (con el plugin BotHelper 1.4): el recorrido de cada bot en la
   **última hora** (una línea de su color), su casa y su zona. Se pueden ocultar en el menú de capas de BlueMap.
 
@@ -145,7 +152,8 @@ desde su misma dirección (`/bluemap/`), así que desde otro equipo no hace falt
 Cambia sin reiniciar nada los radios de búsqueda del Leñador, el Minero y el Granjero, **qué minerales busca el
 Minero y en qué orden**, si el Granjero amplía la granja y si usa la compostera, a partir de qué distancia van a casa
 con /tp, el intervalo del Organizador, cuántos huecos libres
-dejan antes de volver a guardar, el rescate desde el servidor y los avisos a Discord. Los cambios se guardan en
+dejan antes de volver a guardar, **qué hace el Cazador** (automático, seguir o explorar), a quién sigue, cuánto protege
+y explora y si usa el arco, el rescate desde el servidor y los avisos a Discord. Los cambios se guardan en
 `data/settings.json` y se aplican encima de `config.js`; «Restablecer» vuelve a su valor.
 
 ### 🖥️ Pestaña Consola
@@ -164,7 +172,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 
 | | |
 |---|---|
-| ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor y **no cuentan para dormir**. El servidor carga alrededor de cada bot **solo la distancia que pide** (`viewDistance` de `config.js`), no la `view-distance` de `server.properties`: con 6 bots, de ~3.000 chunks cargados a ~1.000 |
+| ⚡ Rendimiento | Los bots **no hacen aparecer criaturas** a su alrededor (salvo el Cazador) y **no cuentan para dormir**. El servidor carga alrededor de cada bot **solo la distancia que pide** (`viewDistance` de `config.js`), no la `view-distance` de `server.properties`: con 6 bots, de ~3.000 chunks cargados a ~1.000 |
 | 🧹 Criaturas | En Paper 26.2 aparecían cientos de criaturas por minuto alrededor de los bots y, como los bots no cuentan para que desaparezcan solas, se acumulaban por miles. Ahora no se deja que aparezcan (de forma natural) monstruos, murciélagos ni peces lejos de los jugadores reales, y cada minuto se quitan los monstruos, murciélagos y peces **desechables** (sin nombre, sin correa, no persistentes, no sacados con cubo) que estén a más de 128 bloques de cualquier jugador real. Nunca toca animales, aldeanos ni jefes, ni nada cerca de ti |
 | 🤫 Sin comandos | La escala y la saturación de los bots al aparecer, y los objetos que se dan (cofres, hornos, herramientas…), los pone el plugin: no sale nada en tu chat de OP. Sin el plugin, los bots usan `/attribute`, `/effect` y `/give` |
 | 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
@@ -174,6 +182,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | 🆘 Rescate | El servidor sabe si un bot está en **lava, fuego, asfixiándose o ahogándose**, o cuánto lleva **quieto** aunque se reconecte; el panel lo devuelve a casa (`config.js` → `serverRescue`: Minero y Leñador, 4 min quietos lejos de casa) |
 | 🔇 Silencio | Sin mensajes de **entrada, salida, muerte ni logros** de los bots en el chat |
 | 🧲 Imán | Lo que suelta un bloque que rompe un bot **aparece a sus pies** |
+| 🏹 Cazador | Para las criaturas **cuenta como un jugador** (a su alrededor aparecen monstruos; sin esto, explorando no encontraría ninguno). Lo que suelta un monstruo que mata un bot, y su experiencia, **va directo a su inventario**. Cuando sigue a un jugador, el teletransporte **no le lleva a otro mundo** (Nether, End). Lista `hunters` de `config.yml` |
 | 🗺️ Mapa | Dibuja en **BlueMap** (si está instalado) el recorrido de cada bot en la última hora, sus casas y sus zonas de trabajo |
 | 🔍 Búsquedas | El **servidor** busca los minerales, troncos y cultivos maduros para el Minero, el Leñador y el Granjero (en otro hilo, sin cargar chunks y con 2 ms por tick como mucho). Antes lo hacía el panel y lo congelaba varios segundos; sin el plugin, cada bot busca como antes |
 | 🔌 Panel | **Estado del servidor** en la cabecera (TPS, ms por tick, RAM, entidades, jugadores) y alerta si va lento; **almacén en vivo** (lee los cofres directamente, también lo que muevas a mano); **consola**; **registro de diagnóstico** de lo que hacen los bots |
@@ -220,10 +229,11 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 | Minero | 1 pico y 32 adoquines + 32 de pizarra profunda (para pilares de rescate) |
 | Granjero | 1 azada, 32 semillas de trigo, 16 zanahorias / patatas / semillas de remolacha |
 | Pescador | 1 caña |
+| Cazador | 1 espada de cada tipo, el arco y 192 flechas |
 
 ### 🪓 Leñador
-- Busca la base de un árbol (radio 96), lo tala de abajo arriba y replanta el brote.
-  Si el servidor tiene un plugin tipo *Timber* (el árbol cae entero), el registro dirá «Talados 1 troncos».
+- Busca la base de un árbol (radio 96), lo tala de abajo arriba y replanta el brote. El registro dice cuántos
+  troncos ganó (con un plugin tipo *Veinminer* o *Timber* el árbol cae entero al picar la base).
 - Sin hacha, tala con las manos. Si pasa cerca de casa sin hacha, busca una en los cofres.
 - Sin árboles cerca, **explora** manteniendo un rumbo.
 
@@ -255,7 +265,7 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 - Cada **20 minutos** (o con 🗂️ Organizar ahora) hace una ronda:
   1. Se da 4 cofres y 4 carteles con `/give` (material para ampliar el almacén).
   2. Se teletransporta a la casa de cada bot y **saca todo menos sus herramientas de repuesto**
-     (picos, hachas, azadas, palas, espadas, cañas y tijeras). Espera si ese bot está guardando en ese momento.
+     (picos, hachas, azadas, palas, espadas, arcos, cañas y tijeras). Espera si ese bot está guardando en ese momento.
   3. Vuelve al almacén y reparte cada objeto **en el cofre de su categoría**. Comprueba cada depósito y lo reintenta si el servidor lo rechaza.
   4. Si una categoría no tiene cofre o está llena, **coloca uno nuevo con un cartel encima** con su nombre.
 - Los cofres van **en cuadrícula con pasillos** y nunca pegados (así no se unen en cofres dobles mezclando categorías).
@@ -274,9 +284,10 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 - Su casa es un cofre en el **taller, cerca del almacén** (fuera de su cuadrícula), con unos 7 bloques llanos
   libres al norte para los hornos y algo de sitio a los lados para la mesa de trabajo: `!casa artesano`.
 - **Herramientas (primero):** cada 10 min revisa que cada bot tenga **1 herramienta de repuesto** en su casa:
-  hacha (leñador), pico (minero), azada (granjero), y caña (pescador). Si falta alguna,
+  hacha (leñador), pico (minero), azada (granjero), caña (pescador) y espada y arco (cazador). Si falta alguna,
   saca materiales del almacén (**diamante**; si no hay, hierro o piedra; palos o madera para hacerlos; cuerda
-  para las cañas), la **fabrica en una mesa de trabajo** y **la deja en el cofre de ese bot** con `/tp`.
+  para las cañas y los arcos, que trae el Cazador de las arañas), la **fabrica en una mesa de trabajo** y **la deja
+  en el cofre de ese bot** con `/tp`.
 - **Solo va al almacén si hay lo que busca:** con el plugin BotHelper sabe qué tiene cada cofre (se lee cada 30 s),
   así que si no hay nada que fundir no viaja, y si lo hay solo abre esos cofres.
 - **Hornos:** coloca **4 hornos** junto a su cofre. Cuando hay hornos libres, saca del almacén **hierro, oro y
@@ -285,6 +296,23 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 - Guarda lo producido (lingotes, comida cocinada) y los materiales sobrantes en su cofre; **el organizador lo
   lleva al almacén**.
 - Se ajusta en `config.js` → `smelter` (hornos) y `smith` (herramientas).
+
+### 🏹 Cazador
+- **Qué hace** (su tarjeta del panel, la pestaña ⚙️ Ajustes o `!cazador` en el juego):
+  - **🛡️ Seguir:** va con un jugador (`hunter.player`) y caza los monstruos que se le acercan (16 bloques). Si te
+    alejas más de 32 bloques o lo pierde de vista, se teletransporta a tu lado. No te sigue al Nether ni al End ni
+    si estás en modo espectador: entonces vigila su casa.
+  - **🧭 Explorar:** recorre los alrededores de su casa (160 bloques) o su **zona del mapa**, cazando lo que encuentra.
+  - **🔄 Automático** (por defecto): sigue al jugador mientras está conectado; si no, explora.
+- **Espada y arco:** cuerpo a cuerpo con la espada (esperando su recarga, como un jugador) y de lejos (7–40 bloques)
+  con el arco: **calcula la caída de la flecha** y se adelanta al movimiento del monstruo. **Nunca dispara** si hay un
+  jugador, otro bot, un aldeano, un animal o un bloque en la trayectoria: entonces se acerca y usa la espada.
+- **Presas:** zombis, esqueletos (y sus variantes), arañas, creepers (primero, antes de que revienten algo), brujas,
+  slimes, phantoms, saqueadores… **No ataca** endermans, piglins, wardens ni nada con nombre (las mascotas o adornos).
+- **Botín:** con el plugin le llega directo al inventario (sin el plugin, lo recoge del suelo). Lo guarda en casa al
+  llenarse; el Organizador lo lleva a la categoría Mobs. Si se queda sin flechas se da 64 con `/give`.
+- **No rompe ni pone bloques** para abrirse paso (`canDig: false`): puede caminar por tu base sin estropear nada.
+- Sin espada o sin arco, va a casa a por el repuesto que le deja el Artesano.
 
 ### 🆘 Rescate de atascos (leñador y minero)
 - Si pasan **90 s fuera de casa sin alejarse más de 3 bloques**, se consideran atascados:
@@ -302,8 +330,13 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 |---|---|
 | `!casa <bot>` | Ese bot adopta como casa el cofre más cercano a él (≤ 8 bloques) |
 | `!casa todos` | Lo mismo para todos los bots (cada uno busca cerca de sí mismo) |
+| `!cazador sigueme` | El Cazador te sigue y te protege (modo seguir) |
+| `!cazador explora` | El Cazador se va a explorar y cazar por su cuenta |
+| `!cazador auto` | Te sigue cuando estás conectado y explora cuando no |
+| `!cazador ven` | Se teletransporta a tu lado ahora |
+| `!cazador casa` | Vuelve a casa a guardar lo que lleva |
 
-`<bot>` puede ser el rol (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`, `artesano`),
+`<bot>` puede ser el rol (`minero`, `leñador`/`lenador`, `granjero`, `pescador`, `organizador`, `artesano`, `cazador`),
 la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 
 ---
@@ -323,12 +356,13 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 | `stuck` | `detectSeconds` 90, `allowTeleport`, `repeatMinutes` 10 |
 | `organizer` | `intervalMinutes` 20, `warehouseRadius` 12, `maxWarehouseRadius` 112, `maxChests` 0 (ilimitado), `inbox`, `protect`, `categories` |
 | `fishing` | `searchRadius` 32 |
+| `hunter` (Cazador) | `mode` (`auto` / `follow` / `explore`), `player`, `guardRadius` 16, `exploreRadius` 160, `useBow` |
 | `smelter` (Artesano, hornos) | `furnaces` 4, `cycleSeconds` 30, `batchPerFurnace` 64, `smelt` (qué funde/cocina), `fuels` |
 | `smith` (Artesano, herramientas) | `checkMinutes` 10, `sparesPerBot` 1, `tools` (herramienta de cada bot), `tiers` (diamante > hierro > piedra) |
 | `botStart` | Al aparecer: `scale` 0.9999 (arregla las físicas de salto de mineflayer en 1.21+) y `saturation` (no necesitan comer). Con el plugin, sin comandos |
 | `starterCommands` | Comandos extra que ejecuta cada bot al aparecer (salen en el chat de los OP) |
 | `farm` | `autoCreate` (arar junto al agua), `searchWaterRadius`, `compost` (compostera) |
-| `bots.<bot>` | `username`, `home` (`{x,y,z}` fija), `stuckWatch`, `give` (lo que entrega 🎁), `viewDistance`, `autoHome`, `pathfinderTickMs` |
+| `bots.<bot>` | `username`, `home` (`{x,y,z}` fija), `stuckWatch`, `give` (lo que entrega 🎁), `viewDistance`, `autoHome`, `pathfinderTickMs`, `canDig` (`false`: no rompe ni pone bloques al caminar) |
 
 ---
 
@@ -341,11 +375,11 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
   (contraseña) o cambia los nombres de los bots en `config.js`.
 - **No ejecutes un bot suelto** (`node bots/<bot>.js`) con el panel abierto: entrarían dos con el mismo nombre
   y se expulsarían entre sí en bucle.
-- **Recursos:** con los 6 bots, el proceso usa unos **500–550 MB de RAM** y en torno a **medio núcleo de CPU**
+- **Recursos:** con los 7 bots, el proceso usa unos **400–450 MB de RAM** y en torno a **medio núcleo de CPU**
   cuando todos están activos. Lo que más gasta es el cálculo de rutas (`performance.pathfinderTickMs`).
 - **Si un bot muere**, reaparece en el spawn o en su cama y vuelve a trabajar (con `keepInventory` no pierde nada).
 - **Cambiar la casa de un bot:** `!casa <bot>` / 🏠 Fijar casa, o borrar `data/home_<bot>.json`.
-- **Cofre de casa roto:** el bot olvida esa casa y adopta otra (excepto organizador y artesano).
+- **Cofre de casa roto:** el bot olvida esa casa y adopta otra (excepto organizador, artesano y cazador).
 - **Avisos en rojo** en el registro: la mayoría se explican solos («¿Es OP?», «cofres llenos», «no llego al
   cofre…»). Si un bot hace algo raro, el registro filtrado por ese bot suele decir por qué.
 
@@ -355,7 +389,7 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 
 ```
 abrir_panel.bat        Abre el panel en Windows (recomendado)
-panel.js               Gestor de los 6 bots + servidor del panel (127.0.0.1:3000)
+panel.js               Gestor de los bots + servidor del panel (127.0.0.1:3000)
 panel/index.html       Interfaz del panel
 panel/alerts.js        Alertas de los bots
 panel/serverlink.js    Conexión con el plugin BotHelper
@@ -370,10 +404,13 @@ bots/farmer.js         Granjero
 bots/fisher.js         Pescador
 bots/organizer.js      Organizador
 bots/artisan.js        Artesano (hornos + herramientas)
+bots/hunter.js         Cazador (espada, arco con cálculo de trayectoria, seguir o explorar)
 bots/warehouse.js      Acceso al almacén (lo usan el Artesano y los pedidos)
 server-plugin/         Plugin BotHelper para Paper (código y build.ps1)
 data/                  Datos de tu mundo (se crea solo, no se sube a git):
   home_<bot>.json        casa de cada bot
+  zones.json             zonas de trabajo elegidas en el mapa
+  settings.json          ajustes cambiados desde el panel
   almacen.json           categoría de cada cofre del organizador (respaldo de los carteles)
   stats.json             estadísticas acumuladas
   almacen_inventario.json  contenido de cada cofre del almacén

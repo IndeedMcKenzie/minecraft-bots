@@ -384,7 +384,7 @@ function sourceHomes(bot) {
     // taller del fundidor y el herrero) sí se recogen: collectFrom no toca los cofres del almacén.
     if (v.distanceTo(bot.home) < 2) continue
     if (homes.some(h => h.pos.distanceTo(v) < 1)) continue
-    const label = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', artisan: 'Artesano' }[key] || key
+    const label = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', artisan: 'Artesano', hunter: 'Cazador' }[key] || key
     homes.push({ key, label, pos: v })
   }
   return homes

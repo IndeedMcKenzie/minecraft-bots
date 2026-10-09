@@ -408,6 +408,14 @@
   .set-ctrl input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
   .set-unit { color: var(--muted); font-size: 12px; }
   .set-reset { font-size: 12px; padding: 3px 8px; }
+  .set-ctrl select, .set-ctrl input[type=text], .hunt-row select {
+    font: inherit; font-size: 13px; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px;
+  }
+  .set-ctrl select { max-width: 340px; }
+  .set-ctrl input[type=text] { width: 170px; }
+  .hunt-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .hunt-row .hunt-state { color: var(--muted); font-size: 12px; }
   .set-row.ores { grid-template-columns: minmax(0, 1fr); }
   .set-row.ores .set-ctrl { grid-column: 1; grid-row: auto; justify-self: stretch; flex-direction: column; align-items: stretch; margin-top: 6px; }
   .ore-list { display: grid; gap: 4px; }
@@ -493,7 +501,9 @@
     <section class="breakdowns">
       <div class="panel-card"><div class="card-title">⛏️ Minerales por tipo</div><div class="hbars" id="bd-minerales"></div></div>
       <div class="panel-card"><div class="card-title">🎣 Pesca</div><div class="hbars" id="bd-pesca"></div></div>
-      <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>    </section>
+      <div class="panel-card"><div class="card-title">🗂️ Almacén por categoría</div><div class="hbars" id="bd-almacen"></div></div>
+      <div class="panel-card"><div class="card-title">🏹 Caza por tipo</div><div class="hbars" id="bd-caza"></div></div>
+    </section>
   </main>
 
   <main id="view-warehouse" class="wh-view" hidden>
@@ -538,6 +548,7 @@
         <option value="woodcutter">🪓 Leñador</option>
         <option value="miner">⛏️ Minero</option>
         <option value="farmer">🌾 Granjero</option>
+        <option value="hunter">🏹 Cazador</option>
       </select>
       <label class="meta">Radio <input type="number" id="zone-radius" min="8" max="128" step="4" value="48"> bloques</label>
       <button class="primary" id="zone-set" title="Mueve el mapa hasta que la cruz del centro quede sobre el sitio y pulsa aquí">📍 Fijar en la cruz</button>
@@ -549,7 +560,8 @@
       <div class="map-cross" aria-hidden="true"></div>
     </div>
     <div class="meta map-help">Mueve el mapa hasta que la cruz quede sobre el sitio y pulsa «Fijar en la cruz»: el Leñador y el Minero
-      trabajarán solo dentro de ese círculo (y volverán a él) y el Granjero lo usará como su granja. Siguen guardando en su casa.
+      trabajarán solo dentro de ese círculo (y volverán a él), el Granjero lo usará como su granja y el Cazador, cuando explora, cazará
+      dentro de él. Siguen guardando en su casa.
       En el mapa se dibujan las casas, las zonas y el recorrido de cada bot en la última hora (se pueden ocultar en el menú de BlueMap).</div>
   </main>
 
@@ -557,6 +569,7 @@
     <div class="wh-status">Los cambios se aplican al momento, sin reiniciar nada, y se guardan aunque cierres el panel.
       «Restablecer» vuelve al valor de config.js.</div>
     <div class="settings-grid" id="settings-groups"></div>
+    <datalist id="online-players"></datalist>
   </main>
 
   <main id="view-bots">
@@ -653,6 +666,14 @@ function createCard(b) {
       <span title="Inventario">🎒</span><span class="v slots"></span>
       <span title="Casa">🏠</span><span class="v home"></span>
     </div>
+    <div class="hunt-row" hidden>
+      <select class="hunt-mode" aria-label="Qué hace el Cazador">
+        <option value="auto" title="Sigue al jugador si está conectado; si no, explora">🔄 Automático</option>
+        <option value="follow" title="Va con el jugador y le protege (si no está, vigila su casa)">🛡️ Seguir</option>
+        <option value="explore" title="Recorre su zona del mapa o los alrededores de su casa cazando">🧭 Explorar</option>
+      </select>
+      <span class="hunt-state"></span>
+    </div>
     <div class="deposit"></div>
     <div class="items"></div>
     <div class="card-actions">
@@ -678,6 +699,10 @@ function createCard(b) {
   $('[data-act="give"]', el).title = b.gifts ? `Dar con /give: ${b.gifts} (el bot debe ser OP)` : 'Sin objetos configurados en config.js'
   $('[data-act="organize"]', el).hidden = b.key !== 'organizer'
   $('.map-btn', el).addEventListener('click', () => { if (el._pos) openMap(el._pos) })
+  if (b.key === 'hunter') {
+    $('.hunt-row', el).hidden = false
+    $('.hunt-mode', el).addEventListener('change', e => saveSetting('hunter.mode', e.target.value))
+  }
   return el
 }
 
@@ -739,6 +764,13 @@ function updateCard(el, b) {
   const organize = $('[data-act="organize"]', el)
   organize.disabled = !online || !b.home || b.organizing
   organize.textContent = b.organizing ? '🗂️ Organizando…' : '🗂️ Organizar ahora'
+  if (b.hunt) {
+    // Qué tiene que hacer (se puede cambiar aquí) y qué está haciendo
+    const sel = $('.hunt-mode', el)
+    if (document.activeElement !== sel) sel.value = b.hunt.mode
+    $('.hunt-state', el).textContent = b.hunt.state ||
+      (b.hunt.mode === 'explore' ? 'explora por su cuenta' : `sigue a ${b.hunt.player || '(nadie elegido)'}`)
+  }
   el._pos = b.pos
   const mapBtn = $('.map-btn', el)
   mapBtn.hidden = !mapUrl
@@ -776,9 +808,19 @@ function renderItems(container, items) {
   }))
 }
 
+// Jugadores conectados (no bots): sugerencias del ajuste "Jugador al que sigue" del Cazador
+function fillOnlinePlayers(state) {
+  const list = $('#online-players')
+  const names = ((state.server && state.server.plugin && state.server.plugin.players) || []).filter(p => !p.bot).map(p => p.name)
+  if (list.dataset.names === names.join(',')) return
+  list.dataset.names = names.join(',')
+  list.replaceChildren(...names.map(n => { const o = document.createElement('option'); o.value = n; return o }))
+}
+
 function renderState(state) {
   lastState = state
   fillDebugPlayers(state.bots)
+  fillOnlinePlayers(state)
   // Desde otro equipo, "127.0.0.1" sería ese equipo: usar la misma dirección con la que se abrió el panel
   const map = state.map && state.map.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/, `//${location.hostname}`)
   if (map !== mapUrl) {
@@ -976,6 +1018,12 @@ const ITEM_NAMES = {
   diamond: 'Diamante', emerald: 'Esmeralda', gold: 'Oro', iron: 'Hierro', coal: 'Carbón', copper: 'Cobre',
   lapis: 'Lapislázuli', redstone: 'Redstone', nether_gold: 'Oro del Nether', nether_quartz: 'Cuarzo',
   cod: 'Bacalao', salmon: 'Salmón', pufferfish: 'Pez globo', tropical_fish: 'Pez tropical',
+  // Presas del Cazador
+  zombie: 'Zombi', husk: 'Zombi del desierto', drowned: 'Ahogado', zombie_villager: 'Aldeano zombi', skeleton: 'Esqueleto',
+  stray: 'Esqueleto de las nieves', bogged: 'Esqueleto del pantano', wither_skeleton: 'Esqueleto wither', spider: 'Araña',
+  cave_spider: 'Araña de cueva', creeper: 'Creeper', witch: 'Bruja', slime: 'Slime', magma_cube: 'Cubo de magma',
+  phantom: 'Phantom', pillager: 'Saqueador', vindicator: 'Vindicador', evoker: 'Invocador', vex: 'Vex', silverfish: 'Lepisma',
+  endermite: 'Endermite', blaze: 'Blaze', zoglin: 'Zoglin', breeze: 'Breeze',
 }
 const itemLabel = n => ITEM_NAMES[n] || (n.charAt(0).toUpperCase() + n.slice(1)).replace(/_/g, ' ')
 
@@ -1008,6 +1056,8 @@ function renderStats() {
     { label: '🔨 Herramientas fabricadas', value: get('artisan', 'herramientas') + get('smith', 'herramientas'), sub: `${fmtNum(get('artisan', 'entregas') + get('smith', 'entregas'))} entregadas` },
     { label: '📦 Objetos guardados', value: sumAll('guardados'), sub: `${fmtNum(sumAll('viajes'))} viajes a casa` },
     { label: '🗂️ Objetos ordenados', value: get('organizer', 'ordenados'), sub: `${fmtNum(get('organizer', 'rondas'))} rondas del organizador` },
+    { label: '🏹 Monstruos cazados', value: get('hunter', 'cazados'), sub: get('hunter', 'flechas')
+      ? `${fmtNum(get('hunter', 'flechas'))} flechas · ${Math.round(100 * get('hunter', 'aciertos') / get('hunter', 'flechas'))} % de acierto` : '' },
   ]
   $('#kpis').replaceChildren(...kpis.map(k => {
     const el = document.createElement('div')
@@ -1024,7 +1074,9 @@ function renderStats() {
   renderBotsTable(b, d.bots)
   renderHBars($('#bd-minerales'), det.minerales)
   renderHBars($('#bd-pesca'), det.pesca)
-  renderHBars($('#bd-almacen'), det.almacen)}
+  renderHBars($('#bd-almacen'), det.almacen)
+  renderHBars($('#bd-caza'), det.caza)
+}
 
 function renderBotsTable(b, bots) {
   const cols = [
@@ -1156,7 +1208,7 @@ function renderHourly(hourly, bots, now) {
 
 // Una gráfica de línea por bot con su producción principal en cada una de las últimas 24 horas. La hora en curso
 // va aparte (está a medias); se avisa si la última hora completa quedó muy por debajo de su media.
-const WORK_WHAT = { woodcutter: 'árboles', miner: 'minerales', farmer: 'cosechas', fisher: 'capturas', organizer: 'ordenados', artisan: 'fundidos' }
+const WORK_WHAT = { woodcutter: 'árboles', miner: 'minerales', farmer: 'cosechas', fisher: 'capturas', organizer: 'ordenados', artisan: 'fundidos', hunter: 'cazados' }
 function renderWork(work, bots, now) {
   const HOUR = 3600000
   const lastHour = Math.floor(now / HOUR) * HOUR
@@ -1207,7 +1259,7 @@ function openMap(pos) {
 }
 
 // ── Zonas de trabajo (pestaña Mapa) ─────────────────────────
-const ZONE_DEFAULT_RADIUS = { woodcutter: 48, miner: 32, farmer: 32 }
+const ZONE_DEFAULT_RADIUS = { woodcutter: 48, miner: 32, farmer: 32, hunter: 96 }
 // Centro de lo que se mira en BlueMap: va en la dirección del mapa (#mundo:x:y:z:distancia:…), que se puede leer
 // porque el panel sirve BlueMap desde su misma dirección (/bluemap/)
 function mapCenter() {
@@ -1281,7 +1333,7 @@ async function loadSettings() {
 async function saveSetting(path, value) {
   const r = await postJson('/api/settings', { path, value })
   if (r && r.settings) settingsData = r.settings
-  renderSettings()
+  if (settingsData) renderSettings() // desde la tarjeta del Cazador se puede cambiar sin haber abierto Ajustes
 }
 
 function renderSettings() {
@@ -1343,6 +1395,40 @@ function settingRow(it) {
     box.setAttribute('aria-label', it.label)
     box.addEventListener('change', () => saveSetting(it.path, box.checked))
     ctrl.append(box)
+  } else if (it.type === 'choice') {
+    const sel = document.createElement('select')
+    sel.setAttribute('aria-label', it.label)
+    for (const o of it.options) {
+      const op = document.createElement('option')
+      op.value = o.key
+      op.textContent = o.label
+      sel.append(op)
+    }
+    sel.value = it.value
+    sel.addEventListener('change', () => saveSetting(it.path, sel.value))
+    ctrl.append(sel)
+  } else if (it.type === 'player') {
+    // Con sugerencias: los jugadores conectados (lista online-players)
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.maxLength = 16
+    input.value = it.value || ''
+    input.placeholder = 'Nombre en el juego'
+    input.setAttribute('list', 'online-players')
+    input.setAttribute('aria-label', it.label)
+    const commit = () => {
+      const v = input.value.trim()
+      if (v === it.value) return
+      if (!/^[A-Za-z0-9_]{1,16}$/.test(v)) {
+        toast(`${it.label}: letras, números y _ (hasta 16)`, true)
+        input.value = it.value || ''
+        return
+      }
+      saveSetting(it.path, v)
+    }
+    input.addEventListener('change', commit)
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur() })
+    ctrl.append(input)
   } else if (it.type === 'ores') {
     // Lista completa: primero los activos en su orden, luego los desactivados
     const active = it.value.slice()
@@ -1385,7 +1471,9 @@ function settingRow(it) {
     const reset = document.createElement('button')
     reset.className = 'set-reset'
     reset.textContent = 'Restablecer'
-    reset.title = `Volver al valor de config.js (${Array.isArray(it.default) ? it.default.length + ' minerales' : it.default === true ? 'sí' : it.default === false ? 'no' : it.default})`
+    const defShown = it.type === 'choice' ? ((it.options.find(o => o.key === it.default) || {}).label || it.default)
+      : Array.isArray(it.default) ? it.default.length + ' minerales' : it.default === true ? 'sí' : it.default === false ? 'no' : it.default
+    reset.title = `Volver al valor de config.js (${defShown})`
     reset.addEventListener('click', () => saveSetting(it.path, null))
     ctrl.append(reset)
   }
@@ -1406,6 +1494,7 @@ const ES_ALIASES = {
   carne: 'beef', cerdo: 'porkchop', pollo: 'chicken', cordero: 'mutton', conejo: 'rabbit', cocinado: 'cooked',
   lingote: 'ingot', cuero: 'leather', hueso: 'bone', cuerda: 'string', huevo: 'egg', pluma: 'feather',
   manzana: 'apple', pan: 'bread', arena: 'sand', grava: 'gravel', tierra: 'dirt', brote: 'sapling',
+  flecha: 'arrow', arco: 'bow', espada: 'sword', polvora: 'gunpowder', podrida: 'rotten', perla: 'pearl', membrana: 'membrane',
 }
 const plain = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
 

@@ -13,6 +13,8 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
@@ -31,7 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * - No pueden tapar cofres: se anula cualquier bloque sólido que pongan justo encima de uno
  *   (un cofre con un bloque sólido encima no se abre; con un cofre doble basta con una mitad).
  * - Silencio: sin mensajes de entrada, salida, muerte ni logros de los bots en el chat.
- * - Imán: lo que suelta un bloque que rompe un bot aparece a sus pies.
+ * - Imán: lo que suelta un bloque que rompe un bot aparece a sus pies; lo que suelta una criatura que mata un bot (y su
+ *   experiencia) va directamente a su inventario.
  * - Vigilancia para el rescate: cuánto tiempo lleva cada bot sin moverse (aunque se reconecte) y si está
  *   en peligro (lava, fuego, asfixia, ahogándose). El panel decide si lo devuelve a casa.
  */
@@ -44,7 +47,7 @@ final class BotAssist implements Listener {
     private static final double MOVE_THRESHOLD = 2.0;
 
     private final BotHelper plugin;
-    private boolean guardChests, silence, magnet;
+    private boolean guardChests, silence, magnet, mobLoot;
 
     // Por nombre de bot (sobrevive a las reconexiones): dónde estaba quieto y desde cuándo; último peligro
     private final Map<String, Location> anchor = new ConcurrentHashMap<>();
@@ -63,6 +66,7 @@ final class BotAssist implements Listener {
         guardChests = c.getBoolean("protection.no-blocks-on-chests", true);
         silence = c.getBoolean("chat.silence-bots", true);
         magnet = c.getBoolean("magnet.enabled", true);
+        mobLoot = c.getBoolean("magnet.mob-loot", true);
     }
 
     private boolean isBot(Player p) {
@@ -161,6 +165,23 @@ final class BotAssist implements Listener {
                 item.setPickupDelay(0);
             }
         });
+    }
+
+    /** Botín de una criatura que mata un bot (espada o flecha): a su inventario, sin perseguir objetos por el suelo. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMobDeath(EntityDeathEvent e) {
+        if (!mobLoot || e.getEntity() instanceof Player) return;
+        Player killer = e.getEntity().getKiller();
+        if (!isBot(killer)) return;
+        var drops = java.util.List.copyOf(e.getDrops());
+        e.getDrops().clear();
+        for (ItemStack it : drops) {
+            for (ItemStack over : killer.getInventory().addItem(it).values()) killer.getWorld().dropItem(killer.getLocation(), over);
+        }
+        if (e.getDroppedExp() > 0) {
+            killer.giveExp(e.getDroppedExp());
+            e.setDroppedExp(0);
+        }
     }
 
     private static String pos(Location l) {

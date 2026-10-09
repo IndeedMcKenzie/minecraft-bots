@@ -12,6 +12,10 @@ bots:
   - Bot_Organizador
   - Bot_Artesano
 prefix: "Bot_"
+# Bots cazadores: para las criaturas cuentan como jugadores (a su alrededor aparecen monstruos y desaparecen como
+# alrededor de un jugador). Sin esto, el Cazador explorando no encontraría ninguno (ver cleanup)
+hunters:
+  - Bot_Cazador
 
 # Rendimiento
 performance:
@@ -54,6 +58,8 @@ chat:
 # Imán: lo que suelta un bloque que rompe un bot aparece a sus pies
 magnet:
   enabled: true
+  # Lo que suelta una criatura que mata un bot (y su experiencia) va directamente a su inventario
+  mob-loot: true
 
 # Pesca
 fishing:

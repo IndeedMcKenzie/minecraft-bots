@@ -13,6 +13,12 @@ const FILE = path.join(__dirname, '..', 'data', 'settings.json')
 // Familias de mineral que el Minero puede buscar, en el orden por defecto (la primera es la más importante)
 const ORE_FAMILIES = ['diamond', 'emerald', 'gold', 'iron', 'coal', 'copper', 'lapis', 'redstone']
 const ORE_LABELS = { diamond: 'Diamante', emerald: 'Esmeralda', gold: 'Oro', iron: 'Hierro', coal: 'Carbón', copper: 'Cobre', lapis: 'Lapislázuli', redstone: 'Redstone' }
+// Qué hace el Cazador (también se elige en su tarjeta y desde el juego con !cazador)
+const HUNTER_MODES = [
+  { key: 'auto', label: '🔄 Automático: sigue al jugador si está conectado; si no, explora' },
+  { key: 'follow', label: '🛡️ Seguir al jugador y protegerle' },
+  { key: 'explore', label: '🧭 Explorar y cazar por su cuenta' },
+]
 
 const SCHEMA = [
   { path: 'search.woodRadius', group: '🪓 Leñador', label: 'Radio de búsqueda de árboles', type: 'int', min: 16, max: 128, unit: 'bloques',
@@ -27,6 +33,16 @@ const SCHEMA = [
     help: 'Si tiene semillas, ara tierra nueva junto al agua dentro de su radio.' },
   { path: 'farm.compost', group: '🌾 Granjero', label: 'Compostera: semillas sobrantes → harina de huesos', type: 'bool',
     help: 'Echa en una compostera junto a su casa las semillas que sobran (también las del almacén) y usa la harina de huesos para que los cultivos crezcan antes.' },
+  { path: 'hunter.mode', group: '🏹 Cazador', label: 'Qué hace', type: 'choice', options: HUNTER_MODES,
+    help: 'Desde el juego: !cazador sigueme · !cazador explora · !cazador auto · !cazador ven (a tu lado ahora) · !cazador casa.' },
+  { path: 'hunter.player', group: '🏹 Cazador', label: 'Jugador al que sigue', type: 'player',
+    help: 'Nombre exacto en el juego. No le sigue al Nether ni al End (espera en casa, o explora en automático).' },
+  { path: 'hunter.guardRadius', group: '🏹 Cazador', label: 'Protege hasta', type: 'int', min: 6, max: 32, unit: 'bloques',
+    help: 'Caza los monstruos que se acercan a esta distancia del jugador (o de su casa, si la vigila).' },
+  { path: 'hunter.exploreRadius', group: '🏹 Cazador', label: 'Explora hasta', type: 'int', min: 32, max: 1000, unit: 'bloques de casa',
+    help: 'Sin zona en el mapa. Con zona, explora solo dentro de ella. Más lejos = más mundo cargado y más trabajo para BlueMap.' },
+  { path: 'hunter.useBow', group: '🏹 Cazador', label: 'Usar el arco', type: 'bool',
+    help: 'Contra los monstruos lejanos. Nunca dispara si hay un jugador, un animal o un aldeano en la trayectoria.' },
   { path: 'organizer.intervalMinutes', group: '🗂️ Organizador', label: 'Cada cuánto hace una ronda', type: 'int', min: 5, max: 120, unit: 'min',
     help: 'Recoge lo guardado en las casas de los demás y lo ordena en el almacén. Se aplica desde la próxima ronda.' },
   { path: 'home.teleportDistance', group: '🏠 Todos los bots', label: 'Ir y volver de casa con /tp a partir de', type: 'int', min: 50, max: 2000, unit: 'bloques',
@@ -71,6 +87,15 @@ function validate(item, value) {
     if (!Number.isFinite(n) || Math.round(n) !== n) return { error: 'Debe ser un número entero' }
     if (n < item.min || n > item.max) return { error: `Entre ${item.min} y ${item.max}` }
     return { value: n }
+  }
+  if (item.type === 'choice') {
+    if (!item.options.some(o => o.key === value)) return { error: 'Opción no válida' }
+    return { value }
+  }
+  if (item.type === 'player') {
+    const name = String(value).trim()
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return { error: 'Nombre de jugador no válido (letras, números y _; hasta 16)' }
+    return { value: name }
   }
   if (item.type === 'ores') {
     if (!Array.isArray(value)) return { error: 'Lista no válida' }

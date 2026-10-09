@@ -18,6 +18,7 @@ function emptyData() {
 // Producción principal de cada bot, guardada también por hora (gráficas por bot del panel)
 const MAIN_METRIC = {
   woodcutter: 'arboles', miner: 'minerales', farmer: 'cosechas', fisher: 'capturas', organizer: 'ordenados', artisan: 'producidos',
+  hunter: 'cazados',
 }
 
 let data = load()

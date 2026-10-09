@@ -51,7 +51,7 @@ const sCfg = Object.assign({
 const smCfg = Object.assign({
   checkMinutes: 10,
   sparesPerBot: 1,
-  tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod' },
+  tools: { woodcutter: 'axe', miner: 'pickaxe', farmer: 'hoe', fisher: 'fishing_rod', hunter: ['sword', 'bow'] },
   tiers: ['diamond', 'iron', 'stone'],
 }, cfg.smith)
 
@@ -64,7 +64,7 @@ const isInput = name => sCfg.smelt.includes(name)
 const fuelValue = name => (name === 'coal' || name === 'charcoal') ? 8 : 1.5
 
 const HOME_CHEST_RADIUS = (cfg.home && cfg.home.chestRadius) || 6
-const LABELS = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', organizer: 'Organizador' }
+const LABELS = { woodcutter: 'Leñador', miner: 'Minero', farmer: 'Granjero', fisher: 'Pescador', organizer: 'Organizador', hunter: 'Cazador' }
 
 // Material por nivel (nombres de objeto) y categoría del almacén donde buscarlo
 const TIER_MATERIAL = {
@@ -76,8 +76,12 @@ const TIER_MATERIAL = {
 const RECIPE_NEEDS = { pickaxe: { mat: 3, sticks: 2 }, axe: { mat: 3, sticks: 2 }, hoe: { mat: 2, sticks: 2 }, sword: { mat: 2, sticks: 1 }, shovel: { mat: 1, sticks: 2 } }
 
 const CRAFT_ATTEMPTS = 3 // intentos de crafteo antes de recurrir a /give
+// Herramientas de cuerda y palos (sin material por niveles): cuánto lleva cada una
+const STRING_TOOLS = { fishing_rod: { string: 2, sticks: 3 }, bow: { string: 3, sticks: 3 } }
+const FAMILY_ES = { axe: 'hacha', pickaxe: 'pico', hoe: 'azada', shovel: 'pala', sword: 'espada', fishing_rod: 'caña', bow: 'arco' }
 
-const isToolOf = family => name => family === 'fishing_rod' ? name === 'fishing_rod' : name.endsWith(`_${family}`)
+// fishing_rod y bow son un objeto concreto ("crossbow" no es un arco); el resto, cualquier nivel (diamond_axe…)
+const isToolOf = family => name => STRING_TOOLS[family] ? name === family : name.endsWith(`_${family}`)
 const countOf = (bot, test) => bot.inventory.items().filter(i => test(i.name)).reduce((a, i) => a + i.count, 0)
 
 // Al guardar en su cofre se queda lo pendiente de meter en los hornos, el combustible y sus bloques de taller
@@ -370,13 +374,16 @@ async function openContainer(bot, block) {
 async function checkAndCraft(bot) {
   console.log(`${TAG} 🔍 Revisando herramientas de repuesto de los bots...`)
   const needs = []
-  for (const [key, family] of Object.entries(smCfg.tools)) {
+  for (const [key, tools] of Object.entries(smCfg.tools)) {
     if (bot.stopped || bot.pendingCommand) return
     const home = homeOf(key)
     if (!home) continue
-    const spares = await countSpares(bot, home, family)
+    const families = [].concat(tools) // un bot puede necesitar varias (el Cazador: espada y arco)
+    const spares = await countSpares(bot, home, families)
     if (spares === null) continue
-    if (spares < smCfg.sparesPerBot) needs.push({ key, family, home, n: smCfg.sparesPerBot - spares })
+    for (const family of families) {
+      if (spares[family] < smCfg.sparesPerBot) needs.push({ key, family, home, n: smCfg.sparesPerBot - spares[family] })
+    }
   }
 
   if (needs.length === 0) {
@@ -385,14 +392,14 @@ async function checkAndCraft(bot) {
     await teleportTo(bot, bot.home)
     return
   }
-  console.log(`${TAG} 🛠️ Hace falta: ${needs.map(n => `${LABELS[n.key] || n.key} (${n.family.replace('_', ' ')} ×${n.n})`).join(', ')}`)
+  console.log(`${TAG} 🛠️ Hace falta: ${needs.map(n => `${LABELS[n.key] || n.key} (${FAMILY_ES[n.family] || n.family} ×${n.n})`).join(', ')}`)
 
   const failed = []
   for (const need of needs) {
     for (let i = 0; i < need.n && !bot.stopped && !bot.pendingCommand; i++) {
       const tool = await craftTool(bot, need.family)
       if (!tool || !await deliverTool(bot, tool, need)) {
-        failed.push(`${LABELS[need.key] || need.key} (${need.family.replace('_', ' ')})`)
+        failed.push(`${LABELS[need.key] || need.key} (${FAMILY_ES[need.family] || need.family})`)
         break
       }
     }
@@ -406,25 +413,25 @@ async function checkAndCraft(bot) {
   await storeOutputs(bot)
 }
 
-/** Cuenta herramientas de una familia en los cofres de una casa. null si no pudo revisarlos. */
-async function countSpares(bot, home, family) {
+/** Cuenta las herramientas de cada familia en los cofres de una casa ({ axe: 1, … }). null si no pudo revisarlos. */
+async function countSpares(bot, home, families) {
   if (!await teleportTo(bot, home)) return null
   const chests = bot.findBlocks({ matching: chestIds(bot), point: home, maxDistance: HOME_CHEST_RADIUS, count: 32 })
     .map(p => bot.blockAt(p)).filter(Boolean)
-  let total = 0
+  const total = Object.fromEntries(families.map(f => [f, 0]))
   let unread = 0
   for (const chest of chests) {
     try {
       const c = await openContainer(bot, chest)
       if (!c) { unread++; continue }
-      total += c.containerItems().filter(i => isToolOf(family)(i.name)).length
+      for (const f of families) total[f] += c.containerItems().filter(i => isToolOf(f)(i.name)).length
       try { c.close() } catch {}
       await sleep(250)
     } catch { unread++ }
   }
   // Si algún cofre no se pudo abrir (a veces el servidor no responde) no se sabe cuántos hay: mejor no
   // fabricar de más y volver a mirar en la próxima revisión
-  if (total < smCfg.sparesPerBot && unread > 0) {
+  if (families.some(f => total[f] < smCfg.sparesPerBot) && unread > 0) {
     console.warn(`[Artesano] No pude abrir ${unread} cofre(s) en ${fmtPos(home)}; lo reviso en la próxima vuelta.`)
     return null
   }
@@ -435,15 +442,18 @@ async function countSpares(bot, home, family) {
 async function craftTool(bot, family) {
   let itemName = null
 
-  if (family === 'fishing_rod') {
-    if (countOf(bot, n => n === 'string') < 2) await fetchFromWarehouse(bot, [{ test: n => n === 'string', max: 2, cats: ['Mobs', 'Varios'] }], 'Artesano')
-    if (countOf(bot, n => n === 'string') < 2) {
-      // Ningún bot consigue cuerda (sale de las arañas): si el almacén no tiene, se la da con /give
+  if (STRING_TOOLS[family]) {
+    // Caña o arco: cuerda y palos
+    const need = STRING_TOOLS[family]
+    const strings = () => countOf(bot, n => n === 'string')
+    if (strings() < need.string) await fetchFromWarehouse(bot, [{ test: n => n === 'string', max: need.string - strings(), cats: ['Mobs', 'Varios'] }], 'Artesano')
+    if (strings() < need.string) {
+      // La cuerda sale de las arañas (la trae el Cazador): si el almacén no tiene, se la da con /give
       console.log(`${TAG} 🧵 No hay cuerda en el almacén: me la doy con /give.`)
-      if (!await giveSelf(bot, 'string', 2)) return null
+      if (!await giveSelf(bot, 'string', need.string)) return null
     }
-    if (!await ensureSticks(bot, 3)) return null
-    itemName = 'fishing_rod'
+    if (!await ensureSticks(bot, need.sticks)) return null
+    itemName = family
   } else {
     const needs = RECIPE_NEEDS[family]
     if (!needs) return null
@@ -457,7 +467,7 @@ async function craftTool(bot, family) {
       if (has() >= needs.mat) { itemName = `${tier}_${family}`; break }
     }
     if (!itemName) {
-      console.warn(`${TAG} ⛏️ No hay material en el almacén para fabricar ${family}.`)
+      console.warn(`${TAG} ⛏️ No hay material en el almacén para fabricar: ${FAMILY_ES[family] || family}.`)
       return null
     }
     if (!await ensureSticks(bot, needs.sticks)) return null

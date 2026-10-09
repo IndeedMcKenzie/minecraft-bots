@@ -41,6 +41,8 @@ import java.util.Set;
 public final class BotHelper extends JavaPlugin implements Listener {
 
     private final Set<String> bots = new HashSet<>();
+    // Bots cazadores: para las criaturas cuentan como jugadores (a su alrededor aparecen monstruos que cazar)
+    private final Set<String> hunters = new HashSet<>();
     private String prefix = "";
     private boolean noMobSpawning, ignoreSleep, botViewDistance, noMonsterDamage, noFallDamage, noMonsterTarget, deliverCatch;
     private PanelApi api;
@@ -78,6 +80,8 @@ public final class BotHelper extends JavaPlugin implements Listener {
         var c = getConfig();
         bots.clear();
         for (String name : c.getStringList("bots")) bots.add(name.toLowerCase(Locale.ROOT));
+        hunters.clear();
+        for (String name : c.getStringList("hunters")) hunters.add(name.toLowerCase(Locale.ROOT));
         prefix = c.getString("prefix", "");
         noMobSpawning = c.getBoolean("performance.no-mob-spawning", true);
         ignoreSleep = c.getBoolean("performance.ignore-sleep", true);
@@ -133,8 +137,23 @@ public final class BotHelper extends JavaPlugin implements Listener {
         return bots.contains(name.toLowerCase(Locale.ROOT)) || (!prefix.isEmpty() && name.startsWith(prefix));
     }
 
+    /** ¿Es un bot cazador? (lista hunters de config.yml) */
+    public boolean isHunter(Player p) {
+        return p != null && hunters.contains(p.getName().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * ¿Cuenta como jugador para las criaturas (apariciones, limpieza)? Los jugadores reales y los cazadores: el resto
+     * de bots no (alrededor de ellos no deben aparecer ni acumularse monstruos).
+     */
+    public boolean countsForMobs(Player p) {
+        return !isBot(p) || isHunter(p);
+    }
+
     private void applyTo(Player p) {
-        if (noMobSpawning) p.setAffectsSpawning(false);
+        // Los cazadores sí cuentan para el spawn (y así los monstruos de su alrededor desaparecen como con un jugador)
+        if (isHunter(p)) p.setAffectsSpawning(true);
+        else if (noMobSpawning) p.setAffectsSpawning(false);
         if (ignoreSleep) p.setSleepingIgnored(true);
         applyViewDistance(p, p.getClientViewDistance());
     }

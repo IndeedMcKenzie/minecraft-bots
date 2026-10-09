@@ -29,6 +29,7 @@ import java.util.List;
  *    criatura si no hay ningún jugador real a menos de `radius` bloques (cerca de ti aparecen como siempre).
  *  - Limpieza: cada minuto se quitan las criaturas "desechables" lejos de todo jugador real (las que se cargan de
  *    chunks guardados, las de generadores…), como haría el juego.
+ *  Los bots cazadores (lista hunters) cuentan como jugadores reales: a su alrededor sí aparecen monstruos.
  */
 final class MobCleanup implements Runnable, Listener {
     private static final long LOG_EVERY_MS = 10 * 60 * 1000;
@@ -67,7 +68,7 @@ final class MobCleanup implements Runnable, Listener {
         int removed = 0;
         for (World w : Bukkit.getWorlds()) {
             List<Location> realPlayers = new ArrayList<>();
-            for (Player p : w.getPlayers()) if (!plugin.isBot(p)) realPlayers.add(p.getLocation());
+            for (Player p : w.getPlayers()) if (plugin.countsForMobs(p)) realPlayers.add(p.getLocation());
             for (Mob m : w.getEntitiesByClass(Mob.class)) {
                 if (!disposable(m) || nearAny(realPlayers, m.getLocation())) continue;
                 m.remove();
@@ -94,7 +95,7 @@ final class MobCleanup implements Runnable, Listener {
         if (type == null || !(Enemy.class.isAssignableFrom(type) || Ambient.class.isAssignableFrom(type) || WaterMob.class.isAssignableFrom(type))) return;
         Location at = e.getSpawnLocation();
         for (Player p : at.getWorld().getPlayers()) {
-            if (!plugin.isBot(p) && p.getLocation().distanceSquared(at) <= radiusSq) return; // hay alguien de verdad cerca
+            if (plugin.countsForMobs(p) && p.getLocation().distanceSquared(at) <= radiusSq) return; // hay alguien de verdad (o un cazador) cerca
         }
         e.setCancelled(true);
         e.setShouldAbortSpawn(true); // y que no lo reintente en esta vuelta (ahorra trabajo)

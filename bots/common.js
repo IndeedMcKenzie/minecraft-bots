@@ -100,11 +100,18 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     if (bot.pathfinder) {
       const mcData = bot.registry
       const movements = new Movements(bot, mcData)
-      movements.canDig = true
+      // canDig: false (el Cazador): no pica ni pone bloques para abrirse paso (camina por las bases de los jugadores)
+      const builds = !(botKey && cfg.bots[botKey]?.canDig === false)
+      movements.canDig = builds
       movements.digCost = 10
       movements.allowParkour = false
       movements.allow1by1towers = false // solo se activan durante un rescate
-      movements.scafoldingBlocks = SCAFFOLD_ITEMS.map(n => mcData.itemsByName[n]?.id).filter(Boolean)
+      movements.scafoldingBlocks = builds ? SCAFFOLD_ITEMS.map(n => mcData.itemsByName[n]?.id).filter(Boolean) : []
+      // Nunca por un portal: un bot en el Nether o en el End no sabría volver (su casa está en el mundo normal)
+      for (const blockName of ['nether_portal', 'end_portal', 'end_gateway']) {
+        const b = mcData.blocksByName[blockName]
+        if (b) movements.blocksToAvoid.add(b.id)
+      }
       // Bloques huecos por arriba (compostera, calderos): llegan a 1 de alto y el pathfinder cree que se pueden pisar,
       // pero el bot cae dentro y se queda encerrado (le pasó al Granjero con su compostera). Como las vallas: no se pisan
       for (const blockName of HOLLOW_BLOCKS) { const b = mcData.blocksByName[blockName]; if (b) movements.fences.add(b.id) }
@@ -551,9 +558,11 @@ function setHomeFromNearestChest(bot) {
   return chest.position
 }
 
-// Si aún no tiene casa, adopta el cofre más cercano que vea
+// Si aún no tiene casa, adopta el cofre más cercano que vea (salvo los bots con autoHome: false, cuya casa eliges tú:
+// el Cazador, siguiendo a un jugador, adoptaría un cofre suyo)
 function ensureHome(bot) {
   if (bot.home) return true
+  if (bot.botKey && cfg.bots[bot.botKey]?.autoHome === false) return false
   const chest = bot.findBlock({ matching: chestIds(bot), maxDistance: (cfg.search && cfg.search.chestRadius) || 48 })
   if (!chest) return false
   setHome(bot, chest.position)
@@ -676,10 +685,11 @@ function getDepositableItems(bot, keepItemNames = [], keepAmounts = {}) {
 
 /**
  * Vuelve a casa (desde donde sea), reparte todo en los cofres de casa excepto keepItemNames
- * (y la reserva de keepAmounts) y, si returnToWorkSpot está activo, regresa al sitio donde trabajaba.
+ * (y la reserva de keepAmounts) y, si returnToWorkSpot está activo, regresa al sitio donde trabajaba
+ * (opts.returnToWork = false: no regresa; el Cazador vuelve por su cuenta al lado del jugador que sigue).
  * Devuelve: 'ok' | 'full' | 'no_home' | 'unreachable' | 'no_chest' | 'cooldown' | 'nothing_to_deposit' | 'disabled'
  */
-async function returnHomeAndDeposit(bot, keepItemNames = [], keepAmounts = {}) {
+async function returnHomeAndDeposit(bot, keepItemNames = [], keepAmounts = {}, opts = {}) {
   const label = bot.label
   if (cfg.chest && !cfg.chest.enabled) return 'disabled'
   if (bot._nextDepositAt && Date.now() < bot._nextDepositAt) return 'cooldown'
@@ -703,7 +713,7 @@ async function returnHomeAndDeposit(bot, keepItemNames = [], keepAmounts = {}) {
     console.warn(`[${label}] 📦 No pude guardar todo en casa (${result}). Reintento en ${Math.round(retryMs / 60000)} min.`)
   }
 
-  if (far && homeCfg.returnToWorkSpot && !bot.stopped) {
+  if (far && homeCfg.returnToWorkSpot && opts.returnToWork !== false && !bot.stopped) {
     const dist = Math.round(distXZ(bot.entity.position, workSpot))
     // Lejos, o el sitio está bajo tierra (el Minero): volver con /tp justo donde estaba, en vez de minutos andando
     if (stuckCfg.allowTeleport && (dist > teleportDistance() || (workUnderground && dist > 24))) {
@@ -1517,7 +1527,7 @@ module.exports = {
   getDepositableItems,
   placeNewChest,
   reachHome,
-  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, serverFindBlocks, giveItem,
+  setIssue, clearIssue, openWithTimeout, idleSleep, requestTeleport, haltPathfinder, serverFindBlocks, giveItem,
   getZone, setZone, inZone, goToZone, exploreZone,
   botOptions, setupBot, setHomeFromNearestChest, requestCommand, runPendingCommand, giveConfiguredItems, safeGoto, travelTo, explore, equipBestTool, returnHomeAndDeposit, isInventoryFull,
   withdrawToolsFromChest, collectNearbyItems, markBad, isBad, inStuckZone, inReach, sleep, fmtPos
