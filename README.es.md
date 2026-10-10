@@ -72,6 +72,19 @@ la interfaz en `http://127.0.0.1:3000`.
 - **⏻ Apagar** (con confirmación) detiene todos los bots y el panel.
 - Si cambias código o `config.js`, hay que **apagar y volver a abrir** el panel. Si solo cambia `panel/index.html`, basta con **F5**.
 
+### 📱 En el móvil (Android)
+Abre `http://<IP de este PC>:3000` en el navegador del móvil (en la misma red y con su IP permitida en
+`panel.allowedIps`). En una pantalla pequeña el panel se adapta solo:
+- **Pestañas abajo**, al alcance del pulgar, y una cabecera de una fila: el estado del servidor, su rendimiento y los
+  botones de todos los bots están en el menú **⋮**.
+- **Tarjetas de los bots plegadas** (estado, actividad, avisos y vida): tócalas para ver la posición, el inventario y
+  los botones. Recuerda cuáles dejaste abiertas.
+- El **almacén en tarjetas**, las pestañas del registro y las categorías en filas que se deslizan, y botones y campos
+  del tamaño del dedo.
+- Con la pantalla apagada o en otra app **deja de pedir datos** (ahorra batería) y al volver se pone al día.
+- **Añadir a pantalla de inicio** (menú de Chrome) deja un acceso con su icono. Como el panel va por `http` (sin
+  candado), Chrome lo abre como una pestaña normal y no como app a pantalla completa.
+
 ### Cada tarjeta de bot muestra
 - Estado (Activo / Conectando / Reconectando / Detenido), actividad actual y avisos en rojo.
 - ❤️ Vida, 📍 posición, 🎒 huecos libres y 🏠 casa (con `N/15 cofres`).
@@ -400,7 +413,8 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
 ```
 abrir_panel.bat        Abre el panel en Windows (recomendado)
 panel.js               Gestor de los bots + servidor del panel (127.0.0.1:3000)
-panel/index.html       Interfaz del panel
+panel/index.html       Interfaz del panel (también para el móvil)
+panel/manifest.webmanifest, icon-*.png  Nombre e icono para "Añadir a pantalla de inicio"
 panel/alerts.js        Alertas de los bots
 panel/serverlink.js    Conexión con el plugin BotHelper
 panel/settings.js      Ajustes que se cambian desde el panel (data/settings.json)

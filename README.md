@@ -75,6 +75,18 @@ UI at `http://127.0.0.1:3000`.
 - **⏻ Apagar** (Shut down, with confirmation) stops every bot and the panel.
 - After changing code or `config.js`, **shut down and reopen** the panel. Changes to `panel/index.html` only need **F5**.
 
+### 📱 On your phone (Android)
+Open `http://<this PC's IP>:3000` in the phone's browser (same network, with its IP allowed in `panel.allowedIps`).
+On a small screen the panel adapts by itself:
+- **Tabs at the bottom**, within thumb reach, and a one-line header: server status, performance and the all-bots
+  buttons live in the **⋮** menu.
+- **Collapsed bot cards** (status, activity, alerts and health): tap one to see its position, inventory and buttons. It
+  remembers which ones you left open.
+- **Warehouse as cards**, log tabs and categories in swipeable rows, and finger-sized buttons and fields.
+- With the screen off or in another app it **stops polling** (saves battery) and catches up when you come back.
+- **Add to Home screen** (Chrome menu) gives you a shortcut with its icon. Since the panel uses `http` (no padlock),
+  Chrome opens it as a regular tab rather than a full-screen app.
+
 ### Each bot card shows
 - Status (online / connecting / reconnecting / stopped), current activity and red warnings.
 - ❤️ health, 📍 position, 🎒 free slots and 🏠 home (with `N/15` chests).
@@ -405,7 +417,8 @@ username (`Bot_Minero`).
 ```
 abrir_panel.bat        Opens the panel on Windows (recommended)
 panel.js               Manager for the bots + panel server (127.0.0.1:3000)
-panel/index.html       Panel UI
+panel/index.html       Panel UI (also for phones)
+panel/manifest.webmanifest, icon-*.png  Name and icon for "Add to Home screen"
 panel/alerts.js        Bot alerts
 panel/serverlink.js    Link to the BotHelper plugin
 panel/settings.js      Settings changed from the panel (data/settings.json)

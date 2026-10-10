@@ -2,7 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- En el móvil: color de la barra del sistema, y nombre e icono al "Añadir a pantalla de inicio" -->
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1e2128" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>Bots Minecraft</title>
 <style>
   :root {
@@ -124,6 +131,7 @@
   .card.caution { border-color: color-mix(in srgb, var(--warn) 60%, var(--border)); }
 
   .alerts { display: flex; flex-direction: column; gap: 4px; }
+  .alerts:empty { display: none; } /* sin avisos, que no deje hueco en la tarjeta */
   .alert {
     display: flex;
     gap: 6px;
@@ -444,8 +452,123 @@
   .zone-chip { display: inline-flex; align-items: center; gap: 6px; }
   .zone-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
-  @media (max-width: 600px) {
-    header, main { padding-left: 16px; padding-right: 16px; }
+  /* ── Móvil (Android) ─────────────────────────────────────── */
+  .menu-btn { display: none; }
+  .overlay { z-index: 50; }
+  .toast { z-index: 60; }
+
+  /* Pantallas táctiles (también tabletas): botones algo más altos y sin el retardo del doble toque */
+  @media (pointer: coarse) {
+    button { min-height: 36px; touch-action: manipulation; }
+  }
+
+  /* Teléfonos (en vertical, o en horizontal con poca altura) */
+  @media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+    html, body { height: auto; min-height: 100%; }
+    body { display: block; -webkit-tap-highlight-color: transparent; }
+
+    /* Cabecera de una fila; el estado del servidor, su rendimiento y los botones de todos los bots, en el menú ⋮ */
+    header { position: sticky; top: 0; z-index: 20; gap: 6px 10px; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); }
+    header h1 { font-size: 15px; }
+    #server-text, .perf, #meta, header .actions, .spacer { display: none; }
+    .alert-summary { margin-left: auto; min-height: 34px; padding: 4px 10px; }
+    .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-height: 34px; padding: 0; font-size: 20px; line-height: 1; }
+    header.menu-open .server { order: 10; width: 100%; }
+    header.menu-open #server-text { display: inline; }
+    header.menu-open .perf:not([hidden]) { display: block; order: 11; width: 100%; }
+    header.menu-open #meta { display: block; order: 12; width: 100%; }
+    header.menu-open .actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); order: 13; width: 100%; }
+    header .actions button { white-space: normal; line-height: 1.2; }
+
+    /* Pestañas abajo, al alcance del pulgar (como en las apps de Android) */
+    .views {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      display: flex; gap: 2px; border-radius: 0;
+      padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+      background: var(--surface); border-top: 1px solid var(--border);
+      box-shadow: 0 -2px 12px rgba(0, 0, 0, .10);
+    }
+    .view-tab {
+      flex: 1 1 0; min-width: 0; min-height: 52px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      padding: 4px 2px; border-radius: 10px; font-size: 11px; color: var(--muted);
+    }
+    .view-tab .vi { font-size: 20px; line-height: 1.1; }
+    .view-tab .vl { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .view-tab.active { box-shadow: none; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .vl[data-short] { font-size: 0; }
+    .vl[data-short]::after { content: attr(data-short); font-size: 11px; }
+
+    /* La página entera se desplaza (nada de barras de desplazamiento dentro de otras) y deja sitio a las pestañas */
+    main { padding: 12px 12px calc(80px + env(safe-area-inset-bottom)); gap: 12px; }
+    .stats-view, .wh-view, .settings-view { overflow: visible; }
+    .toast { bottom: calc(78px + env(safe-area-inset-bottom)); }
+
+    /* Botones y campos del tamaño del dedo; los campos a 16 px (si no, el móvil hace zoom al escribir) */
+    button { min-height: 40px; padding: 8px 12px; }
+    input:not([type=checkbox]):not([type=radio]), select { font-size: 16px !important; min-height: 40px; }
+
+    /* Bots: tarjetas plegadas, con lo esencial a la vista (estado, actividad, avisos, vida); se despliegan tocando
+       la cabecera para ver posición, inventario y botones */
+    .cards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .card { padding: 12px; gap: 8px; }
+    .card-head { cursor: pointer; }
+    .card-head::after { content: '▾'; color: var(--muted); font-size: 16px; margin-left: 2px; transition: transform .2s; }
+    .card.open .card-head::after { transform: rotate(180deg); }
+    .card:not(.open) .facts, .card:not(.open) .deposit, .card:not(.open) .items, .card:not(.open) .card-actions { display: none; }
+    .card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .card-actions button { white-space: normal; line-height: 1.2; }
+
+    /* Registro: las pestañas de los bots en una fila que se desliza; la lista con altura fija */
+    .logs { flex: none; min-height: 0; }
+    .logs-head { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 6px 8px; }
+    .logs-head::-webkit-scrollbar { display: none; }
+    .logs-head .tab { flex: none; min-height: 34px; padding: 4px 10px; }
+    .log-list { flex: none; height: 60vh; font-size: 12px; overscroll-behavior: contain; }
+
+    /* Estadísticas */
+    .stats-head { gap: 8px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .kpi { padding: 10px 12px; }
+    .kpi .k-label { font-size: 12px; }
+    .kpi .k-value { font-size: 22px; }
+    .panel-card { padding: 10px 12px 12px; }
+    .hbar { grid-template-columns: minmax(70px, 38%) minmax(0, 1fr) auto; }
+
+    /* Almacén: cada objeto en su tarjeta (nombre y cantidad arriba, categoría debajo, "Pedir" a lo ancho) */
+    .wh-head input[type=search] { flex: 1 1 100%; min-width: 0; max-width: none; }
+    .cat-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .cat-chips::-webkit-scrollbar { display: none; }
+    .cat-chips button { flex: none; }
+    .wh-table thead { display: none; }
+    .wh-table, .wh-table tbody { display: block; width: 100%; }
+    .wh-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+    .wh-table tr:last-child { border-bottom: none; }
+    .wh-table td { display: block; padding: 0; border: none; white-space: normal; text-align: left; }
+    .wh-table td:nth-child(2) { grid-column: 1; grid-row: 2; color: var(--muted); font-size: 12px; }
+    .wh-table td:nth-child(3) { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; }
+    .wh-table td.order { display: flex; grid-column: 1 / -1; justify-content: flex-start; gap: 8px; margin-top: 6px; }
+    .wh-table td.order .qty { width: 110px; }
+    .wh-table td.order button { flex: 1; }
+    .wh-table td.chart-empty { grid-column: 1 / -1; text-align: center; }
+
+    /* Mapa: que ocupe la pantalla que queda */
+    .map-box { flex: none; height: calc(100dvh - 300px); min-height: 280px; }
+    .map-help { font-size: 12px; }
+
+    /* Consola */
+    .console-out { flex: none; min-height: 0; height: 45vh; font-size: 12px; }
+    #dbg-out { height: auto; min-height: 140px !important; max-height: 50vh !important; }
+    .console-form button { flex: none; }
+
+    /* Ajustes: primero el texto y su explicación, debajo el control */
+    .set-row { grid-template-columns: minmax(0, 1fr); }
+    .set-help { order: 1; }
+    .set-ctrl { order: 2; grid-column: 1; grid-row: auto; justify-self: start; flex-wrap: wrap; margin-top: 4px; }
+    .set-ctrl select { max-width: 100%; }
+    .set-ctrl input[type=text] { width: 220px; max-width: 100%; }
+    .set-ctrl input[type=checkbox] { width: 24px; height: 24px; }
+    .ore-row button { min-height: 36px; min-width: 40px; }
   }
 </style>
 </head>
@@ -456,13 +579,14 @@
     <span class="perf" id="server-perf" hidden></span>
     <span class="meta" id="meta"></span>
     <button class="alert-summary" id="alert-summary" title="Ir al primer bot con alertas">✅ Sin alertas</button>
+    <button class="menu-btn" id="menu-btn" aria-label="Más: estado del servidor y botones de todos los bots" aria-expanded="false">⋮</button>
     <nav class="views" aria-label="Vistas">
-      <button class="view-tab active" data-view="bots">🤖 Bots</button>
-      <button class="view-tab" data-view="warehouse">📦 Almacén</button>
-      <button class="view-tab" data-view="stats">📊 Estadísticas</button>
-      <button class="view-tab" data-view="map" hidden>🗺️ Mapa</button>
-      <button class="view-tab" data-view="console">🖥️ Consola</button>
-      <button class="view-tab" data-view="settings">⚙️ Ajustes</button>
+      <button class="view-tab active" data-view="bots"><span class="vi">🤖</span> <span class="vl">Bots</span></button>
+      <button class="view-tab" data-view="warehouse"><span class="vi">📦</span> <span class="vl">Almacén</span></button>
+      <button class="view-tab" data-view="stats"><span class="vi">📊</span> <span class="vl" data-short="Estad.">Estadísticas</span></button>
+      <button class="view-tab" data-view="map" hidden><span class="vi">🗺️</span> <span class="vl">Mapa</span></button>
+      <button class="view-tab" data-view="console"><span class="vi">🖥️</span> <span class="vl">Consola</span></button>
+      <button class="view-tab" data-view="settings"><span class="vi">⚙️</span> <span class="vl">Ajustes</span></button>
     </nav>
     <div class="spacer"></div>
     <div class="actions">
@@ -604,6 +728,8 @@ let lastState = null
 let mapUrl = null
 let mapFocus = null // posición a centrar al abrir el mapa
 const cardEls = {}
+// Tarjetas desplegadas en el móvil (se recuerdan en este navegador)
+const openCards = new Set((() => { try { return JSON.parse(localStorage.getItem('panel.openCards')) || [] } catch { return [] } })())
 
 // ── Utilidades ──────────────────────────────────────────────
 const $ = (sel, root = document) => root.querySelector(sel)
@@ -694,6 +820,15 @@ function createCard(b) {
   $('[data-act="give"]', el).title = b.gifts ? `Dar con /give: ${b.gifts} (el bot debe ser OP)` : 'Sin objetos configurados en config.js'
   $('[data-act="organize"]', el).hidden = b.key !== 'organizer'
   $('.map-btn', el).addEventListener('click', () => { if (el._pos) openMap(el._pos) })
+  // En el móvil van plegadas: tocando la cabecera se ven la posición, el inventario y los botones (en el ordenador no
+  // cambia nada: allí se ve todo siempre)
+  if (openCards.has(b.key)) el.classList.add('open')
+  $('.card-head', el).addEventListener('click', () => {
+    const open = el.classList.toggle('open')
+    if (open) openCards.add(b.key)
+    else openCards.delete(b.key)
+    try { localStorage.setItem('panel.openCards', JSON.stringify([...openCards])) } catch {}
+  })
   if (b.key === 'hunter') {
     $('.hunt-row', el).hidden = false
     $('.hunt-mode', el).addEventListener('change', e => saveSetting('hunter.mode', e.target.value))
@@ -925,6 +1060,12 @@ $('#alert-summary').addEventListener('click', () => {
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' })
 })
 
+// Móvil: el menú ⋮ de la cabecera muestra el estado del servidor, su rendimiento y los botones de todos los bots
+$('#menu-btn').addEventListener('click', () => {
+  const open = $('header').classList.toggle('menu-open')
+  $('#menu-btn').setAttribute('aria-expanded', String(open))
+})
+
 document.querySelectorAll('[data-all]').forEach(btn => {
   btn.addEventListener('click', () => post(`/api/all/${btn.dataset.all}`))
 })
@@ -966,6 +1107,10 @@ document.querySelectorAll('[data-view]').forEach(btn => {
   btn.addEventListener('click', () => {
     currentView = btn.dataset.view
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === btn))
+    // En el móvil la página entera se desplaza: cada vista empieza arriba, y el menú ⋮ se cierra
+    window.scrollTo(0, 0)
+    $('header').classList.remove('menu-open')
+    $('#menu-btn').setAttribute('aria-expanded', 'false')
     $('#view-bots').hidden = currentView !== 'bots'
     $('#view-stats').hidden = currentView !== 'stats'
     $('#view-warehouse').hidden = currentView !== 'warehouse'
@@ -974,9 +1119,10 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     $('#view-settings').hidden = currentView !== 'settings'
     if (currentView === 'settings') loadSettings()
     if (currentView === 'map') renderZoneInfo()
-    if (currentView === 'console') setTimeout(() => $('#console-input').focus(), 0)
+    // En una pantalla táctil, no sacar el teclado nada más abrir la consola
+    if (currentView === 'console' && !matchMedia('(pointer: coarse)').matches) setTimeout(() => $('#console-input').focus(), 0)
     clearInterval(dbgTimer)
-    if (currentView === 'console') { pollDebug(); dbgTimer = setInterval(pollDebug, 3000) }
+    if (currentView === 'console') { pollDebug(); dbgTimer = setInterval(() => { if (!document.hidden) pollDebug() }, 3000) }
     // El mapa 3D solo se carga mientras se ve (usa la gráfica del navegador)
     const frame = $('#map-frame')
     if (currentView === 'map' && mapUrl) {
@@ -989,10 +1135,10 @@ document.querySelectorAll('[data-view]').forEach(btn => {
     clearInterval(statsTimer)
     if (currentView === 'stats') {
       loadStats()
-      statsTimer = setInterval(loadStats, 10000) // solo se consulta mientras la vista está abierta
+      statsTimer = setInterval(() => { if (!document.hidden) loadStats() }, 10000) // solo mientras la vista está abierta y se ve
     } else if (currentView === 'warehouse') {
       loadWarehouse()
-      statsTimer = setInterval(loadWarehouse, 4000)
+      statsTimer = setInterval(() => { if (!document.hidden) loadWarehouse() }, 4000)
     }
   })
 })
@@ -1807,8 +1953,9 @@ function fillDebugPlayers(bots) {
 
 // ── Conexión en vivo ────────────────────────────────────────
 let shutDown = false
+let es = null
 function connect() {
-  const es = new EventSource('/api/events')
+  es = new EventSource('/api/events')
   es.addEventListener('init', (ev) => {
     const data = JSON.parse(ev.data)
     logs = data.logs
@@ -1820,7 +1967,7 @@ function connect() {
   es.addEventListener('log', (ev) => appendLog(JSON.parse(ev.data)))
   es.addEventListener('shutdown', () => {
     shutDown = true
-    es.close()
+    if (es) { es.close(); es = null }
     showOverlay('Panel apagado', 'Los bots se han detenido. Ya puedes cerrar esta ventana.')
   })
   es.onerror = () => {
@@ -1830,8 +1977,15 @@ function connect() {
 }
 connect()
 
-// Refresca los "hace X s" aunque no llegue estado nuevo
-setInterval(() => { if (lastState) renderState(lastState) }, 1000)
+// Con la página oculta (el móvil con la pantalla apagada o en otra app) no hace falta recibir el estado cada 2 s: se
+// corta la conexión en vivo y se recupera al volver (ahorra batería y datos; al volver llegan otra vez estado y registro)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (es) { es.close(); es = null } }
+  else if (!es && !shutDown) connect()
+})
+
+// Refresca los "hace X s" aunque no llegue estado nuevo (solo si la página se ve)
+setInterval(() => { if (lastState && !document.hidden) renderState(lastState) }, 1000)
 </script>
 </body>
 </html>

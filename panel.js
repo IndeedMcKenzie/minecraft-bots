@@ -613,6 +613,17 @@ const server = http.createServer((req, res) => {
     return
   }
 
+  // Icono y manifiesto: "Añadir a pantalla de inicio" en el móvil (nombre, icono y colores del panel)
+  const STATIC = { '/manifest.webmanifest': 'application/manifest+json', '/icon-192.png': 'image/png', '/icon-512.png': 'image/png' }
+  if (req.method === 'GET' && STATIC[url.pathname]) {
+    fs.readFile(path.join(__dirname, 'panel', url.pathname.slice(1)), (err, data) => {
+      if (err) { res.writeHead(404); return res.end() }
+      res.writeHead(200, { 'Content-Type': STATIC[url.pathname], 'Cache-Control': 'max-age=86400' })
+      res.end(data)
+    })
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/state') return sendJson(res, 200, getState())
 
   if ((req.method === 'GET' || req.method === 'HEAD') && cfg.panel && cfg.panel.bluemapUrl && /^\/bluemap(\/|$)/.test(url.pathname)) return proxyBlueMap(req, res, url)
