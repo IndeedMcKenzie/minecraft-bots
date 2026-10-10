@@ -592,7 +592,7 @@ const OWN_IPS = new Set(Object.values(require('os').networkInterfaces()).flat().
 function clientAllowed(req) {
   const ip = (req.socket.remoteAddress || '').replace(/^::ffff:/, '')
   return ip === '127.0.0.1' || ip === '::1' || OWN_IPS.has(ip) || ALLOWED_IPS.has(ip) ||
-    ALLOWED_PREFIXES.some(p => ip.startsWith(p) && /^d+$/.test(ip.slice(p.length)))
+    ALLOWED_PREFIXES.some(p => ip.startsWith(p) && /^\d+$/.test(ip.slice(p.length)))
 }
 
 const server = http.createServer((req, res) => {
