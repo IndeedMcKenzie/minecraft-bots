@@ -30,7 +30,7 @@ module.exports = {
     // Acceso desde la red local: '0.0.0.0' escucha en la red; '127.0.0.1' = solo este PC.
     // El panel no tiene contraseña: solo se aceptan este PC y las IPs de allowedIps.
     host: '0.0.0.0',
-    allowedIps: ['192.168.1.9'], // tu otra PC (http://192.168.1.10:3000)
+    allowedIps: ['192.168.1.*'], // toda tu red local (192.168.1.0–255); se puede poner una IP suelta: '192.168.1.9'
     autoStart: true,     // Iniciar los bots al abrir el panel
     bluemapUrl: 'http://127.0.0.1:8100', // Pestaña 🗺️ Mapa (web de BlueMap). null = sin pestaña
   },

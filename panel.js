@@ -583,13 +583,16 @@ async function handleAction(res, key, action) {
   sendJson(res, 200, { ok: true })
 }
 
-// Quién puede usar el panel: este PC siempre; desde la red, solo las IPs de panel.allowedIps
+// Quién puede usar el panel: este PC siempre; desde la red, solo las IPs de panel.allowedIps. Admite comodines al
+// final ('192.168.1.*' = toda la red local 192.168.1.0–255)
 const ALLOWED_IPS = new Set((cfg.panel && cfg.panel.allowedIps) || [])
+const ALLOWED_PREFIXES = [...ALLOWED_IPS].filter(p => p.endsWith('*')).map(p => p.slice(0, -1))
 // Las IPs del propio PC (p. ej. abrir http://192.168.1.10:3000 desde aquí mismo)
 const OWN_IPS = new Set(Object.values(require('os').networkInterfaces()).flat().filter(Boolean).map(i => i.address))
 function clientAllowed(req) {
   const ip = (req.socket.remoteAddress || '').replace(/^::ffff:/, '')
-  return ip === '127.0.0.1' || ip === '::1' || OWN_IPS.has(ip) || ALLOWED_IPS.has(ip)
+  return ip === '127.0.0.1' || ip === '::1' || OWN_IPS.has(ip) || ALLOWED_IPS.has(ip) ||
+    ALLOWED_PREFIXES.some(p => ip.startsWith(p) && /^d+$/.test(ip.slice(p.length)))
 }
 
 const server = http.createServer((req, res) => {

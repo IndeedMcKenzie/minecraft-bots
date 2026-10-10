@@ -63,7 +63,7 @@ ViaVersion/ViaBackwards (los bots hablan el protocolo 1.21.4).
 la interfaz en `http://127.0.0.1:3000`.
 
 - **Desde otro equipo de tu red:** pon en `config.js` → `panel.host: '0.0.0.0'` y añade su IP a
-  `panel.allowedIps`; luego abre `http://<IP de este PC>:3000`. El panel **no tiene contraseña**: cualquier
+  `panel.allowedIps` (o toda la red con un comodín: `'192.168.1.*'`); luego abre `http://<IP de este PC>:3000`. El panel **no tiene contraseña**: cualquier
   IP que no esté en la lista recibe "Acceso denegado". En Windows hay que permitir el puerto 3000 en el
   firewall para esa IP. Con `panel.host: '127.0.0.1'` solo se puede abrir desde el propio PC.
 

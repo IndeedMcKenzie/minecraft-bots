@@ -66,7 +66,7 @@ the 1.21.4 protocol).
 UI at `http://127.0.0.1:3000`.
 
 - **From another computer on your network:** set `panel.host: '0.0.0.0'` in `config.js` and add its IP to
-  `panel.allowedIps`, then open `http://<this PC's IP>:3000`. The panel **has no password**: any IP not on the
+  `panel.allowedIps` (or the whole network with a wildcard: `'192.168.1.*'`), then open `http://<this PC's IP>:3000`. The panel **has no password**: any IP not on the
   list gets "access denied". On Windows, allow port 3000 for that IP in the firewall. With
   `panel.host: '127.0.0.1'` it only opens on this PC.
 
