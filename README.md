@@ -12,7 +12,7 @@ on a Paper server and are controlled from a **single-window web panel**:
 | 🌾 Farmer | `Bot_Granjero` | Harvests, replants, sows and expands its farm next to water |
 | 🎣 Fisher | `Bot_Pescador` | Fishes non-stop in open water near its home |
 | 🗂️ Organizer | `Bot_Organizador` | Collects what the others store and sorts it into a central warehouse with labeled chests |
-| 🛠️ Artisan | `Bot_Artesano` | Smelts ores, cooks food and crafts spare tools for the other bots |
+| 🛠️ Artisan | `Bot_Artesano` | Smelts ores, cooks food and crafts and enchants spare tools for the other bots |
 | 🏹 Hunter | `Bot_Cazador` | Hunts monsters with sword and bow: follows and protects you, or explores on its own |
 
 **Highlights:** every bot has its own home and chests and returns to store items when its inventory fills
@@ -303,6 +303,11 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
   materials from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods and
   bows, which the hunter brings back from spiders),
   **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`.
+- **Enchanting:** before delivering it, it **enchants every tool** at an enchanting table with 15 bookshelves that
+  it builds itself next to the workshop (it levels a 5×5 patch of natural ground with `/fill` and `/setblock`).
+  It takes the level-30 option, so the game picks the enchantments at random (Efficiency, Fortune, Unbreaking…).
+  Lapis comes from the warehouse (or `/give` if there is none) and experience from `/xp`. If anything fails it
+  delivers the tool unenchanted. Turn it off in ⚙️ Settings or in `config.js` → `enchanting.enabled`.
 - **Only goes to the warehouse when what it needs is there:** with the BotHelper plugin it knows what each chest
   holds (read every 30 s), so with nothing to smelt it doesn't travel, and otherwise it only opens those chests.
 - **Furnaces:** places **4 furnaces** next to its chest. When furnaces are free it takes **raw iron, gold and

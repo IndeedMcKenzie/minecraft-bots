@@ -12,7 +12,7 @@ en un servidor Paper y se controlan desde un **panel web en una sola ventana**:
 | 🌾 Granjero | `Bot_Granjero` | Cosecha, replanta, siembra y amplía su granja junto al agua |
 | 🎣 Pescador | `Bot_Pescador` | Pesca sin parar en agua abierta cerca de su casa |
 | 🗂️ Organizador | `Bot_Organizador` | Recoge lo que guardan los demás y lo ordena en un almacén central con carteles |
-| 🛠️ Artesano | `Bot_Artesano` | Funde minerales, cocina comida y fabrica herramientas de repuesto para los demás bots |
+| 🛠️ Artesano | `Bot_Artesano` | Funde minerales, cocina comida y fabrica y encanta herramientas de repuesto para los demás bots |
 | 🏹 Cazador | `Bot_Cazador` | Caza monstruos con espada y arco: te sigue y te protege, o explora por su cuenta |
 
 **Destacado:** cada bot tiene casa y cofres propios y vuelve a guardar cuando se le llena el inventario ·
@@ -301,6 +301,11 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
   saca materiales del almacén (**diamante**; si no hay, hierro o piedra; palos o madera para hacerlos; cuerda
   para las cañas y los arcos, que trae el Cazador de las arañas), la **fabrica en una mesa de trabajo** y **la deja
   en el cofre de ese bot** con `/tp`.
+- **Encantamientos:** antes de entregarla, **encanta cada herramienta** en una mesa de encantamientos con
+  15 librerías que monta él mismo junto al taller (allana 5×5 de terreno natural con `/fill` y `/setblock`).
+  Usa la opción de nivel 30: el juego elige los encantamientos al azar (Eficiencia, Fortuna, Irrompibilidad…).
+  El lapislázuli sale del almacén (o `/give` si no hay) y la experiencia con `/xp`. Si algo falla, la entrega sin
+  encantar. Se desactiva en ⚙️ Ajustes o en `config.js` → `enchanting.enabled`.
 - **Solo va al almacén si hay lo que busca:** con el plugin BotHelper sabe qué tiene cada cofre (se lee cada 30 s),
   así que si no hay nada que fundir no viaja, y si lo hay solo abre esos cofres.
 - **Hornos:** coloca **4 hornos** junto a su cofre. Cuando hay hornos libres, saca del almacén **hierro, oro y

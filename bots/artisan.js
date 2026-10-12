@@ -36,6 +36,7 @@ const {
   fmtPos,
 } = require('./common')
 const { fetchFromWarehouse } = require('./warehouse')
+const { enchantTool } = require('./enchanter')
 
 const TAG = '[Artesano]'
 
@@ -86,7 +87,7 @@ const countOf = (bot, test) => bot.inventory.items().filter(i => test(i.name)).r
 
 // Al guardar en su cofre se queda lo pendiente de meter en los hornos, el combustible y sus bloques de taller
 const keepNames = bot => bot.inventory.items().map(i => i.name)
-  .filter(n => isInput(n) || isFuel(n) || n === 'furnace' || n === 'crafting_table')
+  .filter(n => isInput(n) || isFuel(n) || n === 'furnace' || n === 'crafting_table' || n === 'lapis_lazuli')
 
 function createBot(ctrl = {}) {
   const bot = mineflayer.createBot(botOptions('artisan'))
@@ -398,6 +399,8 @@ async function checkAndCraft(bot) {
   for (const need of needs) {
     for (let i = 0; i < need.n && !bot.stopped && !bot.pendingCommand; i++) {
       const tool = await craftTool(bot, need.family)
+      // Encantada antes de entregarla (si algo falla, se entrega tal cual)
+      if (tool) await enchantTool(bot, tool)
       if (!tool || !await deliverTool(bot, tool, need)) {
         failed.push(`${LABELS[need.key] || need.key} (${FAMILY_ES[need.family] || need.family})`)
         break

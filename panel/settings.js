@@ -43,6 +43,8 @@ const SCHEMA = [
     help: 'Sin zona en el mapa. Con zona, explora solo dentro de ella. Más lejos = más mundo cargado y más trabajo para BlueMap.' },
   { path: 'hunter.useBow', group: '🏹 Cazador', label: 'Usar el arco', type: 'bool',
     help: 'Contra los monstruos lejanos. Nunca dispara si hay un jugador, un animal o un aldeano en la trayectoria.' },
+  { path: 'enchanting.enabled', group: '🛠️ Artesano', label: 'Encantar las herramientas de repuesto', type: 'bool',
+    help: 'En una mesa con 15 librerías junto al taller, antes de entregarlas (lapislázuli del almacén, experiencia con /xp).' },
   { path: 'organizer.intervalMinutes', group: '🗂️ Organizador', label: 'Cada cuánto hace una ronda', type: 'int', min: 5, max: 120, unit: 'min',
     help: 'Recoge lo guardado en las casas de los demás y lo ordena en el almacén. Se aplica desde la próxima ronda.' },
   { path: 'home.teleportDistance', group: '🏠 Todos los bots', label: 'Ir y volver de casa con /tp a partir de', type: 'int', min: 50, max: 2000, unit: 'bloques',

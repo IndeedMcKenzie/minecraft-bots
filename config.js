@@ -162,6 +162,10 @@ module.exports = {
     tiers: ['diamond', 'iron', 'stone'], // material preferido (si no hay, el siguiente)
   },
 
+  // Artesano · encantamientos: encanta en una mesa (con 15 librerías, junto al taller) cada herramienta de repuesto que
+  // fabrica antes de entregarla. Lapislázuli del almacén (o /give si no hay) y la experiencia con /xp
+  enchanting: { enabled: true },
+
   // Pescador
   fishing: {
     searchRadius: 32,    // Busca agua abierta a esta distancia de su casa
