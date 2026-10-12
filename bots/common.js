@@ -8,6 +8,35 @@ const { Movements, goals: { GoalNear, GoalNearXZ, GoalY } } = require('mineflaye
 const cfg = require('../config')
 const stats = require('./stats')
 
+// Encantamientos en 1.21.4: prismarine-item devuelve el componente tal cual ({ enchantments: [{ id, level }] }) y
+// mineflayer espera [{ name, lvl }] (digTime los recorre con for…of): con una herramienta encantada bot.dig fallaba con
+// "enchantments is not iterable". Se envuelve la clase de objetos que crea cada bot para dar siempre la lista.
+;(function fixEnchantsGetter() {
+  const id = require.resolve('prismarine-item', { paths: [path.dirname(require.resolve('mineflayer'))] })
+  const loader = require(id)
+  if (loader._enchantsFixed) return
+  const wrapped = function (registryOrVersion) {
+    const Item = loader(registryOrVersion)
+    const desc = Object.getOwnPropertyDescriptor(Item.prototype, 'enchants')
+    if (desc && desc.get && !Item.prototype._enchantsFixed) {
+      Object.defineProperty(Item.prototype, 'enchants', {
+        configurable: true,
+        get() {
+          const e = desc.get.call(this)
+          if (Array.isArray(e)) return e
+          const list = e && Array.isArray(e.enchantments) ? e.enchantments : []
+          const reg = typeof registryOrVersion === 'object' ? registryOrVersion : null
+          return list.map(x => ({ name: (reg && reg.enchantments[x.id] || {}).name || String(x.id), lvl: x.level }))
+        },
+      })
+      Item.prototype._enchantsFixed = true
+    }
+    return Item
+  }
+  wrapped._enchantsFixed = true
+  require.cache[id].exports = wrapped
+})()
+
 const BAD_BLOCK_MS = 5 * 60 * 1000   // Tiempo que un bloque inalcanzable queda ignorado
 const STUCK_ZONE_MS = 30 * 60 * 1000 // Tiempo que una zona donde se atascó queda prohibida
 const STUCK_ZONE_RADIUS = 10         // Radio de esa zona prohibida
