@@ -1977,6 +1977,10 @@ function connect() {
 }
 connect()
 
+// Con https (a través de Tailscale) el panel se puede instalar como app; si no se llega al portátil, el service worker
+// enseña una página que lo explica. Por http (en casa) no hace falta
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {})
+
 // Con la página oculta (el móvil con la pantalla apagada o en otra app) no hace falta recibir el estado cada 2 s: se
 // corta la conexión en vivo y se recupera al volver (ahorra batería y datos; al volver llegan otra vez estado y registro)
 document.addEventListener('visibilitychange', () => {

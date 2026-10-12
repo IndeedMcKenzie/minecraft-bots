@@ -614,11 +614,12 @@ const server = http.createServer((req, res) => {
   }
 
   // Icono y manifiesto: "Añadir a pantalla de inicio" en el móvil (nombre, icono y colores del panel)
-  const STATIC = { '/manifest.webmanifest': 'application/manifest+json', '/icon-192.png': 'image/png', '/icon-512.png': 'image/png' }
+  // y service worker (instalar el panel como app cuando se abre con https, a través de Tailscale)
+  const STATIC = { '/manifest.webmanifest': 'application/manifest+json', '/icon-192.png': 'image/png', '/icon-512.png': 'image/png', '/sw.js': 'text/javascript; charset=utf-8' }
   if (req.method === 'GET' && STATIC[url.pathname]) {
     fs.readFile(path.join(__dirname, 'panel', url.pathname.slice(1)), (err, data) => {
       if (err) { res.writeHead(404); return res.end() }
-      res.writeHead(200, { 'Content-Type': STATIC[url.pathname], 'Cache-Control': 'max-age=86400' })
+      res.writeHead(200, { 'Content-Type': STATIC[url.pathname], 'Cache-Control': url.pathname === '/sw.js' ? 'no-cache' : 'max-age=86400' })
       res.end(data)
     })
     return
