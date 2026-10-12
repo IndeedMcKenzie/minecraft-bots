@@ -189,7 +189,7 @@ Plugin de Paper (carpeta `server-plugin/`) que ayuda a los bots desde dentro del
 | 🧹 Criaturas | En Paper 26.2 aparecían cientos de criaturas por minuto alrededor de los bots y, como los bots no cuentan para que desaparezcan solas, se acumulaban por miles. Ahora no se deja que aparezcan (de forma natural) monstruos, murciélagos ni peces lejos de los jugadores reales, y cada minuto se quitan los monstruos, murciélagos y peces **desechables** (sin nombre, sin correa, no persistentes, no sacados con cubo) que estén a más de 128 bloques de cualquier jugador real. Nunca toca animales, aldeanos ni jefes, ni nada cerca de ti |
 | 🤫 Sin comandos | La escala y la saturación de los bots al aparecer, y los objetos que se dan (cofres, hornos, herramientas…), los pone el plugin: no sale nada en tu chat de OP. Sin el plugin, los bots usan `/attribute`, `/effect` y `/give` |
 | 🎣 Pesca | Lo que pesca un bot **aparece a sus pies** en vez de volar hacia él (desde algunas orillas chocaba con el borde, caía al agua y se perdía) |
-| 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan**. El **Cazador** es la excepción: a él sí le atacan los monstruos (también los creepers) y le hacen daño (`protection.hunters-fight`); las caídas tampoco le dañan |
+| 🛡️ Protección | Sin daño de **monstruos** (golpes, flechas, creepers, brujas, veneno) ni de **caídas**; los monstruos no los persiguen. Las herramientas **sí se gastan**. El **Cazador** es la excepción: a él sí le atacan los monstruos (también los creepers) y le hacen daño (`protection.hunters-fight`); las caídas tampoco le dañan. **No pisotean la tierra arada** (1.7.2; `protection.no-trample`): al bajar por los escalones de la granja el Granjero la estropeaba y tenía que volver a ararla |
 | 🧱 Cofres | Los bots **no pueden poner bloques sólidos encima de un cofre** (un cofre tapado no se abre; en uno doble basta con una mitad) |
 | 🌀 Teletransporte | Los bots se teletransportan **a través del plugin**: sin `/tp` ni "[Bot_X: Teleported…]" en tu chat y en la consola. Sin el plugin, vuelven a usar `/tp` |
 | 🆘 Rescate | El servidor sabe si un bot está en **lava, fuego, asfixiándose o ahogándose**, o cuánto lleva **quieto** aunque se reconecte; el panel lo devuelve a casa (`config.js` → `serverRescue`: Minero y Leñador, 4 min quietos lejos de casa) |
@@ -253,6 +253,8 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 ### ⛏️ Minero
 - Elige el **mineral más valioso** a la vista (radio 64): diamante > esmeralda > oro > hierro > carbón > cobre > lapislázuli > redstone.
 - Ignora los que su pico no puede extraer (p. ej. diamante con pico de piedra).
+- Si no llega a un mineral, **descarta su veta entera** un rato (los bloques de ese mineral pegados a él): están detrás
+  del mismo obstáculo (agua, lava…) y probarlos uno a uno le hacía perder minutos.
 - Sin pico, **va a casa a buscar uno**. Si no hay, espera (usa 🎁 Dar herramienta).
 - Con el inventario lleno, primero tira relleno (grava, arena, tierra…) pero conserva su reserva de bloques para pilares.
 
@@ -277,9 +279,12 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 ### 🗂️ Organizador (almacén central)
 - Cada **20 minutos** (o con 🗂️ Organizar ahora) hace una ronda:
   1. Se da 4 cofres y 4 carteles con `/give` (material para ampliar el almacén).
-  2. Se teletransporta a la casa de cada bot y **saca todo menos sus herramientas de repuesto**
-     (picos, hachas, azadas, palas, espadas, arcos, cañas y tijeras). Espera si ese bot está guardando en ese momento.
-  3. Vuelve al almacén y reparte cada objeto **en el cofre de su categoría**. Comprueba cada depósito y lo reintenta si el servidor lo rechaza.
+  2. Se teletransporta a la casa de cada bot y **saca todo menos sus herramientas de repuesto** (en cada casa, las
+     que usa su dueño: hachas en la del Leñador, picos en la del Minero, espadas y arcos en la del Cazador…; las
+     demás, como las palas o cañas que sueltan los monstruos, van al almacén). Espera si ese bot está guardando.
+  3. Vuelve al almacén y reparte cada objeto **en el cofre de su categoría**. Con el plugin BotHelper sabe qué
+     cofres están llenos y **ni los abre**: va directo a los que tienen huecos. Comprueba cada depósito y lo
+     reintenta si el servidor lo rechaza.
   4. Si una categoría no tiene cofre o está llena, **coloca uno nuevo con un cartel encima** con su nombre.
 - Los cofres van **en cuadrícula con pasillos** y nunca pegados (así no se unen en cofres dobles mezclando categorías).
 - **Almacén ilimitado** (`maxChests: 0`): cuando no queda hueco, la cuadrícula **crece en anillos** hasta
@@ -300,12 +305,15 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
   hacha (leñador), pico (minero), azada (granjero), caña (pescador) y espada y arco (cazador). Si falta alguna,
   saca materiales del almacén (**diamante**; si no hay, hierro o piedra; palos o madera para hacerlos; cuerda
   para las cañas y los arcos, que trae el Cazador de las arañas), la **fabrica en una mesa de trabajo** y **la deja
-  en el cofre de ese bot** con `/tp`.
+  en el cofre de ese bot** con `/tp`. Antes de fabricar usa las que ya tenga guardadas en el taller, y con el plugin
+  BotHelper **cuenta los repuestos sin ir a cada casa** (el servidor lee los cofres; solo va si esa zona no está cargada).
 - **Encantamientos:** antes de entregarla, **encanta cada herramienta** en una mesa de encantamientos con
   15 librerías que monta él mismo junto al taller (allana 5×5 de terreno natural con `/fill` y `/setblock`).
   Usa la opción de nivel 30: el juego elige los encantamientos al azar (Eficiencia, Fortuna, Irrompibilidad…).
   El lapislázuli sale del almacén (o `/give` si no hay) y la experiencia con `/xp`. Si algo falla, la entrega sin
-  encantar. Se desactiva en ⚙️ Ajustes o en `config.js` → `enchanting.enabled`.
+  encantar. Un pico que sale con **Toque de seda** no se entrega (el Minero sacaría bloques de mineral en vez de
+  diamantes o carbón): lo deja en el taller (por si lo quieres) y fabrica otro. Se desactiva en ⚙️ Ajustes o en
+  `config.js` → `enchanting.enabled`.
 - **Solo va al almacén si hay lo que busca:** con el plugin BotHelper sabe qué tiene cada cofre (se lee cada 30 s),
   así que si no hay nada que fundir no viaja, y si lo hay solo abre esos cofres.
 - **Hornos:** coloca **4 hornos** junto a su cofre. Cuando hay hornos libres, saca del almacén **hierro, oro y
@@ -341,7 +349,8 @@ Cada opción del plugin se puede apagar en `plugins/BotHelper/config.yml` (`prot
 ### 🆘 Rescate de atascos (leñador y minero)
 - Si pasan **90 s fuera de casa sin alejarse más de 3 bloques**, se consideran atascados:
   1. Suben a la superficie: escaleras o torre con el pathfinder y, si no, **pilar manual** (pican encima y se
-     ponen bloques bajo los pies). Abortan si hay lava o agua encima. Luego vuelven a casa caminando.
+     ponen bloques bajo los pies). Abortan si hay lava o agua encima. Luego vuelven a casa caminando (o con `/tp`
+     si está a más de `home.teleportDistance`, 150 bloques).
   2. Si no lo consiguen, o si se atascan otra vez en menos de 10 min: **`/tp` a casa**.
 - La zona del atasco (10 bloques) y el objetivo que perseguían quedan **prohibidos 30 minutos**, para no repetir.
 - Al terminar guardan el inventario y siguen trabajando.
@@ -401,7 +410,9 @@ la clave (`miner`, `woodcutter`…) o el usuario (`Bot_Minero`).
   y se expulsarían entre sí en bucle.
 - **Recursos:** con los 7 bots, el proceso usa unos **400–450 MB de RAM** y en torno a **medio núcleo de CPU**
   cuando todos están activos. Lo que más gasta es el cálculo de rutas (`performance.pathfinderTickMs`).
-- **Si un bot muere**, reaparece en el spawn o en su cama y vuelve a trabajar (con `keepInventory` no pierde nada).
+- **Si un bot muere**, reaparece en el spawn o en su cama (con `keepInventory` no pierde nada) y, si eso queda a más
+  de 64 bloques de su casa, **vuelve a casa** antes de seguir (si no, se quedaba trabajando junto al spawn). El
+  Cazador no: vuelve por su cuenta al jugador o a su zona.
   Con el plugin BotHelper 1.7.1 el registro dice la causa («💀 Causa: lava en (x, y, z)»), que en el chat no sale.
 - **Bots bloqueados:** si un bot pasa **10 minutos sin avanzar** (su trabajo se quedó esperando algo que no llega) o su
   conexión queda en un estado raro (posición inválida, muerto sin reaparecer, física parada), **se reconecta solo** y

@@ -81,7 +81,7 @@ async function refreshChests() {
       if (!label) continue // sin cartel ni asignación: no es del almacén (p. ej. el buzón)
       // Misma clave que usa bots/inventory.js para un cofre doble: la mitad con menor x (o menor z)
       const [kx, ky, kz] = halves.slice().sort((a, b) => a[0] - b[0] || a[2] - b[2])[0]
-      chests.push({ key: `${kx},${ky},${kz}`, cat: displayCat(normalize(label)), items: c.items })
+      chests.push({ key: `${kx},${ky},${kz}`, cat: displayCat(normalize(label)), items: c.items, slots: c.slots || null })
     }
     inventory.setLive(chests)
     chestsAt = Date.now()
@@ -96,6 +96,11 @@ async function refreshChests() {
 /** Refresca los cofres si los datos tienen más de `maxAgeMs` (para la pestaña Almacén abierta). */
 function refreshChestsIfOlder(maxAgeMs) {
   if (Date.now() - chestsAt > maxAgeMs) refreshChests()
+}
+
+/** Contenido real de los cofres de una zona: { world, x, y, z, radius } → { chests: [{ pos, items, slots, … }], chunksNotLoaded } */
+async function chestsNear(query) {
+  return call('/chests', query)
 }
 
 /** Registro de diagnóstico del plugin: { enable?, since, player, limit } → { enabled, events } */
@@ -163,4 +168,4 @@ function start() {
   setInterval(refreshChests, CHESTS_MS).unref()
 }
 
-module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, runCommand, debugEvents, teleport, playerInfo, findBlocks, updateMapMarkers, hasFeature, botStart, give }
+module.exports = { start, serverInfo, isOnline: () => online, refreshChests, refreshChestsIfOlder, chestsNear, runCommand, debugEvents, teleport, playerInfo, findBlocks, updateMapMarkers, hasFeature, botStart, give }

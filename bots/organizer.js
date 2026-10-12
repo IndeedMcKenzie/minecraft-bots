@@ -67,6 +67,17 @@ function isProtected(itemName) {
   return PROTECT_RULES.some(r => r.test(itemName))
 }
 
+// En cada casa solo se dejan las herramientas que usa su dueño (las que le fabrica el Artesano: config.js →
+// smith.tools); el resto se lleva al almacén. Sin esto, el botín de herramientas se quedaba para siempre en la casa del
+// Cazador (palas de los zombis, cañas de los ahogados…). Casas sin herramientas conocidas (el taller): se protege todo
+const OWNER_TOOLS = (cfg.smith && cfg.smith.tools) || {}
+function isProtectedAt(itemName, ownerKey) {
+  if (!isProtected(itemName)) return false
+  const families = OWNER_TOOLS[ownerKey]
+  if (!families) return true
+  return [].concat(families).some(f => itemName === f || itemName.endsWith(`_${f}`))
+}
+
 // Para comparar carteles escritos a mano: sin mayúsculas ni tildes
 function normalize(text) {
   return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
@@ -234,7 +245,7 @@ async function scanInventory(bot) {
         if (!await approach(bot, chest)) continue
         try {
           const container = await openContainer(bot, chest)
-          inventory.recordChest(chest, displayCat(key), container.containerItems())
+          inventory.recordChest(chest, displayCat(key), container.containerItems(), container.inventoryStart)
           try { container.close() } catch {}
           opened++
         } catch {}
@@ -446,7 +457,7 @@ async function collectFrom(bot, src) {
       // Agrupar por tipo: withdraw() saca de varias pilas a la vez
       const byType = new Map()
       for (const item of container.containerItems()) {
-        if (isProtected(item.name)) continue
+        if (isProtectedAt(item.name, src.key)) continue
         if (bot.fullCats && bot.fullCats.has(categoryOf(item.name))) continue // sin sitio en el almacén: dejarlo aquí
         byType.set(item.type, (byType.get(item.type) || 0) + item.count)
       }
@@ -546,10 +557,31 @@ function cargoOfCategory(bot, cat) {
 
 async function depositCategory(bot, cat, warehouse) {
   for (let attempt = 0; attempt < 4; attempt++) {
-    for (const chest of warehouse.byCategory.get(normalize(cat)) || []) {
+    // Con el inventario en vivo se sabe qué cofres están llenos: esos ni se abren, y los que tienen sitio van primero
+    // (luego los desconocidos). Antes los abría uno a uno por orden de distancia: "Madera" tenía 104 cofres y 103
+    // llenos, y guardar 755 troncos le llevó 11 minutos
+    const rank = c => {
+      if (wasFull(bot, c)) return 2
+      const r = inventory.hasRoomFor(c)
+      return r === true ? 0 : r === null ? 1 : 2
+    }
+    const chests = (warehouse.byCategory.get(normalize(cat)) || []).map(c => ({ c, r: rank(c) }))
+      .filter(x => x.r < 2).sort((a, b) => a.r - b.r).map(x => x.c)
+    for (const chest of chests) {
       if (cargoOfCategory(bot, cat).length === 0) return
-      if (!await approach(bot, chest)) continue
-      await depositVerified(bot, cat, chest)
+      if (!await approach(bot, chest)) {
+        // Si no llega andando, no volver a intentarlo en cada entrega (cada intento son 12 s): el 12/10 el cofre de
+        // Madera de (30, 75, -52) tenía 19 huecos libres y le hacía perder minuto y medio por ronda
+        if (!bot._unreachableWarned) bot._unreachableWarned = new Set()
+        const key = inventory.chestKey(chest)
+        if (!bot._unreachableWarned.has(key)) {
+          bot._unreachableWarned.add(key)
+          console.warn(`[Organizador] 🚧 No llego andando al cofre de "${cat}" en ${fmtPos(chest.position)}: lo salto un rato. Si sigue así, ábrele paso o quítalo.`)
+        }
+        noteFull(bot, chest)
+        continue
+      }
+      if (await depositVerified(bot, cat, chest) === 'full') noteFull(bot, chest)
     }
     if (cargoOfCategory(bot, cat).length === 0) return
     // Sin cofre para esta categoría o todos llenos: crear uno nuevo; si no se puede, la categoría está llena
@@ -562,10 +594,22 @@ async function depositCategory(bot, cat, warehouse) {
 
 const catCount = (bot, cat) => cargoOfCategory(bot, cat).reduce((a, i) => a + i.count, 0)
 
+// Cofres que al abrirlos estaban llenos aunque la cuenta del inventario en vivo diga que cabe algo (pilas a medias, objetos
+// iguales con datos distintos que no se juntan), o a los que no llega andando: no se vuelven a probar en un rato
+const FULL_MEMORY_MS = 10 * 60 * 1000
+function noteFull(bot, chest) {
+  if (!bot._fullChests) bot._fullChests = new Map()
+  bot._fullChests.set(inventory.chestKey(chest), Date.now() + FULL_MEMORY_MS)
+}
+function wasFull(bot, chest) {
+  const until = bot._fullChests && bot._fullChests.get(inventory.chestKey(chest))
+  return !!until && until > Date.now()
+}
+
 /**
  * Deposita la carga de una categoría en un cofre y COMPRUEBA que el servidor lo aceptó: a veces
  * (justo después de colocar cofre y cartel) rechaza los clics y devuelve los objetos al cerrar.
- * Si detecta la devolución, lo reintenta.
+ * Si detecta la devolución, lo reintenta. Devuelve 'full' si el cofre estaba lleno y no cupo nada.
  */
 async function depositVerified(bot, cat, chest) {
   for (let tryN = 0; tryN < 3 && !bot.stopped; tryN++) {
@@ -589,7 +633,7 @@ async function depositVerified(bot, cat, chest) {
           if (e.message && e.message.includes('destination full')) { chestFull = true; break }
         }
       }
-      inventory.recordChest(chest, cat, container.containerItems())
+      inventory.recordChest(chest, cat, container.containerItems(), container.inventoryStart)
       try { container.close() } catch {}
     } catch (err) {
       console.warn(`[Organizador] No pude abrir el cofre ${fmtPos(chest.position)}: ${err.message}`)
@@ -597,7 +641,7 @@ async function depositVerified(bot, cat, chest) {
     }
     await sleep(1500) // tiempo para que el servidor confirme o devuelva los objetos
     if (catCount(bot, cat) < before) return // aceptado
-    if (chestFull) return // estaba lleno de antes: no hay nada que reintentar
+    if (chestFull) return 'full' // estaba lleno de antes: no hay nada que reintentar
     console.warn(`[Organizador] ↩️ El servidor devolvió lo que guardé en ${fmtPos(chest.position)}; reintento en huecos vacíos (${tryN + 1}/3)...`)
     await sleep(1000)
   }

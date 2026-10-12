@@ -11,6 +11,9 @@ const stats = require('./stats')
 // Encantamientos en 1.21.4: prismarine-item devuelve el componente tal cual ({ enchantments: [{ id, level }] }) y
 // mineflayer espera [{ name, lvl }] (digTime los recorre con for…of): con una herramienta encantada bot.dig fallaba con
 // "enchantments is not iterable". Se envuelve la clase de objetos que crea cada bot para dar siempre la lista.
+// Los números (id) son los del servidor, no los de minecraft-data: el 26.2 tiene uno más (lunge, el 21) y desde ahí
+// todos van desplazados (Irrompibilidad salía como Maldición de desaparición). setupBot guarda la lista del servidor
+// en bot.registry.serverEnchantments.
 ;(function fixEnchantsGetter() {
   const id = require.resolve('prismarine-item', { paths: [path.dirname(require.resolve('mineflayer'))] })
   const loader = require(id)
@@ -26,7 +29,8 @@ const stats = require('./stats')
           if (Array.isArray(e)) return e
           const list = e && Array.isArray(e.enchantments) ? e.enchantments : []
           const reg = typeof registryOrVersion === 'object' ? registryOrVersion : null
-          return list.map(x => ({ name: (reg && reg.enchantments[x.id] || {}).name || String(x.id), lvl: x.level }))
+          const server = reg && reg.serverEnchantments
+          return list.map(x => ({ name: (server && server[x.id]) || (reg && reg.enchantments[x.id] || {}).name || String(x.id), lvl: x.level }))
         },
       })
       Item.prototype._enchantsFixed = true
@@ -92,6 +96,8 @@ function reconnectDelay(baseMs) {
 }
 // Bots que no consiguen conectar porque el servidor no responde: solo se avisa al empezar y al volver
 const serverDown = new Set()
+// Al reaparecer tras morir más lejos de casa que esto (en bloques), vuelve a casa (ver setupBot)
+const RESPAWN_HOME_DISTANCE = 64
 
 /**
  * ctrl (opcional) lo usa el panel para controlar el bot: ctrl.enabled = false impide reconectar,
@@ -110,6 +116,12 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   ctrl.bot = bot
   activeBots.add(bot)
   bot.once('end', () => activeBots.delete(bot))
+
+  // Lista de encantamientos del servidor (llega al conectar, antes de aparecer): ver fixEnchantsGetter
+  bot._client.on('registry_data', (packet) => {
+    if (!packet || packet.id !== 'minecraft:enchantment' || !Array.isArray(packet.entries) || !bot.registry) return
+    bot.registry.serverEnchantments = packet.entries.map(e => String(e.key).replace('minecraft:', ''))
+  })
 
   let reconnectScheduled = false
   function scheduleReconnect() {
@@ -165,6 +177,20 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
   // reaparecer tras morir
   bot.on('spawn', () => {
     setTimeout(() => { if (!bot.stopped) applyBotStart(bot).catch(() => {}) }, 3000)
+    // Tras morir se reaparece en el punto de aparición del mundo (22, 76, -165): sin esto el bot seguía trabajando allí
+    // (el Minero buscaba minerales alrededor y, tras guardar en casa, volvía a ese sitio). Si queda lejos de casa, a casa.
+    // El Cazador no: sigue al jugador o explora alrededor de su casa por su cuenta
+    if (bot._diedAt && Date.now() - bot._diedAt < 5 * 60 * 1000 && botKey !== 'hunter') {
+      bot._diedAt = 0
+      setTimeout(() => {
+        if (bot.stopped || !bot.home || !bot.entity || bot.pendingCommand) return
+        const d = Math.round(distXZ(bot.entity.position, bot.home))
+        if (d <= RESPAWN_HOME_DISTANCE) return
+        console.log(`[${name}] 💀 He reaparecido en ${fmtPos(bot.entity.position)}, a ${d} bloques de casa: vuelvo a casa.`)
+        bot._goHomeReason = 'tras reaparecer'
+        requestCommand(bot, 'gohome')
+      }, 4000)
+    }
   })
 
   bot.on('chat', (username, message) => handleChatCommand(bot, username, message))
@@ -172,6 +198,7 @@ function setupBot(bot, name, reconnectFn, botKey, ctrl = {}) {
     console.log(`[${name}] 💀 He muerto.`)
     stats.add(botKey, 'muertes')
     logDeathCause(bot)
+    bot._diedAt = Date.now()
   })
 
   bot.on('error', (err) => {
@@ -607,13 +634,14 @@ function ensureHome(bot) {
  * las pilas que ya hay. Hace falta para objetos que ViaVersion/ViaBackwards marca con datos ocultos
  * (p. ej. huevos con variante): el bot los ve iguales a los del cofre, el servidor no, y rechaza la
  * mezcla devolviéndolos. Solo mueve pilas completas cuyo tamaño quepa en `maxCount`.
+ * filter(objeto), opcional: solo esos (p. ej. el Artesano entrega la herramienta encantada y no otra igual).
  * Devuelve cuántos objetos movió.
  */
-async function depositNoMerge(bot, window, type, maxCount = Infinity) {
+async function depositNoMerge(bot, window, type, maxCount = Infinity, filter = null) {
   let moved = 0
   for (let s = window.inventoryStart; s < window.inventoryEnd; s++) {
     const it = window.slots[s]
-    if (!it || it.type !== type || moved + it.count > maxCount) continue
+    if (!it || it.type !== type || moved + it.count > maxCount || (filter && !filter(it))) continue
     const dest = window.firstEmptySlotRange(0, window.inventoryStart)
     if (dest === null) throw new Error('destination full')
     await bot.clickWindow(s, 0, 0)    // coger la pila
@@ -1290,7 +1318,8 @@ async function goHomeNow(bot) {
     console.warn(`[${bot.label}] 🏠 No tengo casa: usa "Fijar casa" junto a un cofre.`)
     return
   }
-  console.log(`[${bot.label}] 🏡 Volviendo a casa ${fmtPos(bot.home)} por orden del panel...`)
+  console.log(`[${bot.label}] 🏡 Volviendo a casa ${fmtPos(bot.home)} ${bot._goHomeReason || 'por orden del panel'}...`)
+  bot._goHomeReason = null
   const rules = bot.depositRules || { keep: [], amounts: {} }
   const result = await depositAtHome(bot, rules.keep, rules.amounts)
   if (result === 'ok') {
@@ -1357,9 +1386,15 @@ async function escapeAndGoHome(bot) {
       else console.warn(`[${bot.label}] ⚠️ No pude subir a la superficie.`)
     }
     if (bot.home && canSeeSky(bot)) {
-      console.log(`[${bot.label}] 🏡 Volviendo a casa ${fmtPos(bot.home)}...`)
-      if (await travelTo(bot, bot.home, 2, homeCfg.maxTravelMinutes * 60 * 1000)) return finishRescue(bot)
-      console.warn(`[${bot.label}] ⚠️ No encuentro camino a casa.`)
+      // Lejos, con /tp como en los viajes normales (reachHome): el 12/10 el Leñador volvió andando 74 s desde 180 bloques
+      const dist = Math.round(distXZ(bot.entity.position, bot.home))
+      if (stuckCfg.allowTeleport && dist > teleportDistance()) {
+        console.log(`[${bot.label}] 🌀 Casa a ${dist} bloques: vuelvo con /tp.`)
+      } else {
+        console.log(`[${bot.label}] 🏡 Volviendo a casa ${fmtPos(bot.home)}...`)
+        if (await travelTo(bot, bot.home, 2, homeCfg.maxTravelMinutes * 60 * 1000)) return finishRescue(bot)
+        console.warn(`[${bot.label}] ⚠️ No encuentro camino a casa.`)
+      }
     }
   }
 

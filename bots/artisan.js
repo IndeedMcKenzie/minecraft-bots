@@ -36,7 +36,8 @@ const {
   fmtPos,
 } = require('./common')
 const { fetchFromWarehouse } = require('./warehouse')
-const { enchantTool } = require('./enchanter')
+const { enchantTool, enchantsOf, hasUnwanted } = require('./enchanter')
+const link = () => require('../panel/serverlink')
 
 const TAG = '[Artesano]'
 
@@ -395,12 +396,14 @@ async function checkAndCraft(bot) {
   }
   console.log(`${TAG} 🛠️ Hace falta: ${needs.map(n => `${LABELS[n.key] || n.key} (${FAMILY_ES[n.family] || n.family} ×${n.n})`).join(', ')}`)
 
+  // Las que ya tenga guardadas en el taller (de un reparto que falló, por ejemplo) antes de fabricar otras: el 12/10 había
+  // 5 picos de diamante sin usar en su cofre mientras fabricaba picos nuevos
+  await takeOwnSpares(bot, needs)
+
   const failed = []
   for (const need of needs) {
     for (let i = 0; i < need.n && !bot.stopped && !bot.pendingCommand; i++) {
-      const tool = await craftTool(bot, need.family)
-      // Encantada antes de entregarla (si algo falla, se entrega tal cual)
-      if (tool) await enchantTool(bot, tool)
+      const tool = await obtainTool(bot, need.family)
       if (!tool || !await deliverTool(bot, tool, need)) {
         failed.push(`${LABELS[need.key] || need.key} (${FAMILY_ES[need.family] || need.family})`)
         break
@@ -416,8 +419,90 @@ async function checkAndCraft(bot) {
   await storeOutputs(bot)
 }
 
+// Herramientas que se pueden entregar: de esa familia y sin encantamientos que estropeen su trabajo (ver enchanter.js)
+const deliverable = (bot, family) => i => isToolOf(family)(i.name) && !hasUnwanted(bot, i)
+const TIER_ORDER = ['netherite', 'diamond', 'iron', 'golden', 'stone', 'wooden'] // de mejor a peor
+
+/**
+ * Una herramienta de `family` lista para entregar (devuelve su nombre): la que ya lleve encima o, si no, una fabricada; en
+ * los dos casos encantada si aún no lo está. Si al encantarla sale con algo que no le sirve a su bot (Toque de seda en un
+ * pico), esa se aparta (la guarda en el taller) y se fabrica otra; el tercer intento se entrega sin encantar.
+ */
+async function obtainTool(bot, family) {
+  const tier = i => { const t = TIER_ORDER.indexOf(i.name.split('_')[0]); return t < 0 ? 0 : t }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const ready = bot.inventory.items().filter(deliverable(bot, family)).sort((a, b) => tier(a) - tier(b))
+    if (ready.some(i => enchantsOf(bot, i).length > 0)) return ready.find(i => enchantsOf(bot, i).length > 0).name
+    const name = ready.length > 0 ? ready[0].name : await craftTool(bot, family)
+    if (!name || attempt === 3) return name
+    if (await enchantTool(bot, name) !== 'unwanted') return name
+  }
+  return null
+}
+
+/** Saca de los cofres del taller las herramientas que hacen falta (no las apartadas por un mal encantamiento). */
+async function takeOwnSpares(bot, needs) {
+  // Lo que falta de cada familia (se cuenta aquí: con un cofre abierto el inventario del bot no siempre se actualiza)
+  const missing = {}
+  for (const n of needs) missing[n.family] = (missing[n.family] || 0) + n.n
+  for (const f of Object.keys(missing)) missing[f] -= bot.inventory.items().filter(deliverable(bot, f)).length
+  const anyMissing = () => Object.values(missing).some(n => n > 0)
+  if (!anyMissing()) return
+  if (bot.entity.position.distanceTo(bot.home) > 12 && !await teleportTo(bot, bot.home)) return
+  const chests = bot.findBlocks({ matching: chestIds(bot), point: bot.home, maxDistance: HOME_CHEST_RADIUS, count: 32 })
+    .map(p => bot.blockAt(p)).filter(Boolean)
+  let taken = 0
+  for (const chest of chests) {
+    if (!anyMissing() || bot.stopped) break
+    let c = null
+    try {
+      c = await openContainer(bot, chest)
+      if (!c) continue
+      for (let s = 0; s < c.inventoryStart && anyMissing(); s++) {
+        const it = c.slots[s]
+        const family = it && Object.keys(missing).find(f => missing[f] > 0 && deliverable(bot, f)(it))
+        if (!family) continue
+        const dest = c.firstEmptySlotRange(c.inventoryStart, c.inventoryEnd)
+        if (dest === null) break
+        // Con clics (no withdraw): withdraw cogería la primera de ese tipo, que podría ser una apartada
+        await bot.clickWindow(s, 0, 0)
+        await bot.clickWindow(dest, 0, 0)
+        missing[family]--
+        taken++
+        await sleep(150)
+      }
+    } catch {} finally {
+      try { if (c) c.close() } catch {}
+    }
+    await sleep(400)
+  }
+  if (taken > 0) console.log(`${TAG} ♻️ Uso ${taken} herramienta(s) que ya tenía guardadas en el taller en vez de fabricarlas.`)
+}
+
+/**
+ * Herramientas de cada familia en los cofres de una casa, leídas por el servidor (plugin) sin ir hasta allí. null si no
+ * se puede (sin plugin, o la casa en chunks sin cargar porque su bot está lejos): entonces se va en persona.
+ */
+async function countSparesRemote(home, families) {
+  try {
+    if (!link().isOnline()) return null
+    const r = await link().chestsNear({ world: 'world', x: home.x, y: home.y, z: home.z, radius: HOME_CHEST_RADIUS })
+    if (!r || r.chunksNotLoaded > 0 || !Array.isArray(r.chests) || r.chests.length === 0) return null
+    const total = Object.fromEntries(families.map(f => [f, 0]))
+    for (const c of r.chests) {
+      for (const [name, n] of Object.entries(c.items || {})) for (const f of families) if (isToolOf(f)(name)) total[f] += n
+    }
+    return total
+  } catch {
+    return null
+  }
+}
+
 /** Cuenta las herramientas de cada familia en los cofres de una casa ({ axe: 1, … }). null si no pudo revisarlos. */
 async function countSpares(bot, home, families) {
+  // Con el plugin no hace falta ir: antes era un /tp por casa cada 10 min (unos 36 por hora solo para mirar)
+  const remote = await countSparesRemote(home, families)
+  if (remote) return remote
   if (!await teleportTo(bot, home)) return null
   const chests = bot.findBlocks({ matching: chestIds(bot), point: home, maxDistance: HOME_CHEST_RADIUS, count: 32 })
     .map(p => bot.blockAt(p)).filter(Boolean)
@@ -588,12 +673,15 @@ async function deliverTool(bot, itemName, need) {
   const chests = bot.findBlocks({ matching: chestIds(bot), point: need.home, maxDistance: HOME_CHEST_RADIUS, count: 32 })
     .map(p => bot.blockAt(p)).filter(Boolean)
   const tool = bot.registry.itemsByName[itemName]
+  // La que se entrega: encantada si la hay, y nunca una apartada por un mal encantamiento (deposit cogería la primera)
+  const good = it => !hasUnwanted(bot, it)
+  const best = it => good(it) && enchantsOf(bot, it).length > 0
   for (const chest of chests) {
     const before = countOf(bot, n => n === itemName)
     try {
       const c = await openContainer(bot, chest)
       if (!c) continue
-      try { await depositNoMerge(bot, c, tool.id, 1) } catch {}
+      try { if (!await depositNoMerge(bot, c, tool.id, 1, best)) await depositNoMerge(bot, c, tool.id, 1, good) } catch {}
       try { c.close() } catch {}
       // Esperar a que el servidor confirme (con el servidor cargado puede tardar más de un segundo)
       await waitUntil(() => countOf(bot, n => n === itemName) < before, 4000)

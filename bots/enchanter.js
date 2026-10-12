@@ -41,18 +41,33 @@ const withTimeout = (promise, ms, what) => new Promise((resolve, reject) => {
   const t = setTimeout(() => reject(new Error(`${what}: el servidor no respondió en ${ms / 1000} s`)), ms)
   promise.then(v => { clearTimeout(t); resolve(v) }, e => { clearTimeout(t); reject(e) })
 })
-// Encantamientos de un objeto como [{ name, lvl }]: en 1.21.4 mineflayer los da como { enchantments: [{ id, level }] }
+// Encantamientos de un objeto como [{ name, lvl }] (common.js ya los da así; esto es por si llegan sin convertir)
 function enchantsOf(bot, item) {
   const e = item && item.enchants
   if (Array.isArray(e)) return e
   if (e && Array.isArray(e.enchantments)) {
-    return e.enchantments.map(x => ({ name: (bot.registry.enchantments[x.id] || {}).name || String(x.id), lvl: x.level }))
+    const server = bot.registry.serverEnchantments || []
+    return e.enchantments.map(x => ({ name: server[x.id] || (bot.registry.enchantments[x.id] || {}).name || String(x.id), lvl: x.level }))
   }
   return []
 }
 const countOf = (bot, name) => bot.inventory.items().filter(i => i.name === name).reduce((a, i) => a + i.count, 0)
 
-/** Encanta `itemName` (del inventario) en la estación. true si quedó encantado; si algo falla, se entrega sin encantar. */
+// Encantamientos que estropean una herramienta para su bot: con Toque de seda el pico del Minero (y su veta entera, con
+// Veinminer) suelta bloques de mineral en vez de diamantes, carbón o mineral en bruto (ni Fortuna ni nada que fundir)
+const UNWANTED = { pickaxe: ['silk_touch'], shovel: ['silk_touch'] }
+function unwantedOf(bot, item) {
+  const family = (item.name.match(/_(pickaxe|shovel)$/) || [])[1]
+  const bad = UNWANTED[family] || []
+  return enchantsOf(bot, item).filter(e => bad.includes(e.name))
+}
+const hasUnwanted = (bot, item) => unwantedOf(bot, item).length > 0
+const describe = list => list.map(e => `${ES[e.name] || e.name.replace(/_/g, ' ')} ${ROMAN[e.lvl] || e.lvl}`).join(', ')
+
+/**
+ * Encanta `itemName` (uno sin encantar del inventario) en la estación. Devuelve true si quedó encantado, false si no
+ * (se entrega tal cual) y 'unwanted' si salió con un encantamiento que no le sirve a su bot (ver UNWANTED): esa se aparta.
+ */
 async function enchantTool(bot, itemName) {
   if (!enchCfg().enabled || !ENCHANTABLE.test(itemName) || !bot.home) return false
   try {
@@ -70,7 +85,13 @@ async function enchantTool(bot, itemName) {
     const block = bot.blockAt(station)
     if (!block || block.name !== 'enchanting_table') { forgetStation(); return false }
 
+    // Las encantadas que ya llevaba (por si la mesa no devuelve el resultado: entonces se busca la nueva en el inventario)
+    const sig = i => `${i.slot}:${enchantsOf(bot, i).map(e => e.name + e.lvl).join(',')}`
+    const enchantedNow = () => bot.inventory.items().filter(i => i.name === itemName && enchantsOf(bot, i).length > 0)
+    const before = new Set(enchantedNow().map(sig))
+
     const table = await withTimeout(bot.openEnchantmentTable(block), STEP_MS, 'Abrir la mesa')
+    let done = null
     try {
       // Con la mesa abierta los huecos del inventario van numerados según la ventana: buscar en table.items()
       const item = table.items().find(i => i.name === itemName && !enchantsOf(bot, i).length)
@@ -82,21 +103,28 @@ async function enchantTool(bot, itemName) {
       const option = table.enchantments[2]
       if (option.level < 0) throw new Error('la mesa no ofrece encantamientos (¿faltan librerías?)')
       if (option.level < LEVELS_NEEDED) console.warn(`${TAG} ✨ La mesa solo ofrece nivel ${option.level} (¿alguna librería tapada?).`)
-      await withTimeout(table.enchant(2), STEP_MS, 'Encantar')
+      // El resultado es la herramienta tal como queda en la mesa (mirarla en el inventario podía dar otra igual)
+      done = await withTimeout(table.enchant(2), STEP_MS, 'Encantar')
       await withTimeout(table.takeTargetItem(), STEP_MS, 'Recoger la herramienta')
     } finally {
       try { table.close() } catch {}
     }
     await sleep(500)
-    const done = bot.inventory.items().find(i => i.name === itemName && enchantsOf(bot, i).length)
-    if (!done) {
+    if (!done || enchantsOf(bot, done).length === 0) done = enchantedNow().find(i => !before.has(sig(i))) || done
+    const got = done ? enchantsOf(bot, done) : []
+    if (got.length === 0) {
       console.warn(`${TAG} ✨ No quedó encantado ${itemName.replace(/_/g, ' ')}: lo entrego tal cual.`)
       return false
     }
-    const list = enchantsOf(bot, done).map(e => `${ES[e.name] || e.name.replace(/_/g, ' ')} ${ROMAN[e.lvl] || e.lvl}`).join(', ')
-    console.log(`${TAG} ✨ Encantado: ${itemName.replace(/_/g, ' ')} → ${list}.`)
     stats.add('artisan', 'encantados')
-    for (const e of enchantsOf(bot, done)) stats.addDetail('encantamientos', e.name)
+    for (const e of got) stats.addDetail('encantamientos', e.name)
+    const bad = unwantedOf(bot, done)
+    if (bad.length > 0) {
+      console.warn(`${TAG} ✨ ${itemName.replace(/_/g, ' ')} ha salido con ${describe(got)}: ${describe(bad)} no le sirve a su bot ` +
+        '(soltaría bloques de mineral en vez de minerales). Lo aparto en el taller.')
+      return 'unwanted'
+    }
+    console.log(`${TAG} ✨ Encantado: ${itemName.replace(/_/g, ' ')} → ${describe(got)}.`)
     return true
   } catch (err) {
     console.warn(`${TAG} ✨ No pude encantar ${itemName.replace(/_/g, ' ')}: ${err.message}. Lo entrego sin encantar.`)
@@ -223,4 +251,4 @@ function levelingCost(bot, c) {
   return cost
 }
 
-module.exports = { enchantTool }
+module.exports = { enchantTool, enchantsOf, hasUnwanted }

@@ -158,8 +158,8 @@ async function workLoop(bot) {
       // Plazo por progreso: abrirse paso picando pizarra tarda, y con un plazo fijo se rendía a medio camino
       const reached = await safeGoto(bot, new GoalNear(oreBlock.position.x, oreBlock.position.y, oreBlock.position.z, 2), 15, { progressive: true })
       if (!reached) {
-        console.log('[Minero] ⚠️ Mineral inalcanzable temporalmente, buscando otro...')
-        markBad(bot, oreBlock.position)
+        const vein = markVeinBad(bot, oreBlock)
+        console.log(`[Minero] ⚠️ Mineral inalcanzable temporalmente${vein > 1 ? ` (descarto su veta: ${vein} bloques)` : ''}, buscando otro...`)
         await sleep(2000)
         continue
       }
@@ -244,6 +244,38 @@ async function findBestOre(bot, mcData, pickType, zone) {
     if (score < bestScore) { bestScore = score; best = block }
   }
   return best
+}
+
+// ── Veta inalcanzable ────────────────────────────────────────
+// Si no llega a un mineral, al de al lado de la misma veta tampoco: está detrás del mismo obstáculo (agua, lava, un
+// hueco). Antes solo se descartaba ese bloque y la búsqueda siguiente daba el de al lado: perdía ~12 s por bloque (6
+// seguidos en una veta de oro bajo el agua, hasta que el servidor lo sacó ahogándose). Se descarta la veta entera:
+// los bloques de ese mineral (o su versión de pizarra) conectados con él, a 6 bloques como mucho.
+function markVeinBad(bot, start) {
+  const family = name => name.replace(/^deepslate_/, '')
+  const kind = family(start.name)
+  const seen = new Set([start.position.toString()])
+  const queue = [start.position]
+  let n = 0
+  while (queue.length > 0 && n < 64) {
+    const p = queue.shift()
+    markBad(bot, p)
+    n++
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const q = p.offset(dx, dy, dz)
+          const key = q.toString()
+          if (seen.has(key)) continue
+          seen.add(key)
+          if (q.distanceTo(start.position) > 6) continue
+          const b = bot.blockAt(q)
+          if (b && family(b.name) === kind) queue.push(q)
+        }
+      }
+    }
+  }
+  return n
 }
 
 // ── Tirar adoquín, tierra y grava para liberar espacio ────────

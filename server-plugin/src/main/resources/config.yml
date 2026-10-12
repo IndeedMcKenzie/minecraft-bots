@@ -54,6 +54,8 @@ protection:
   hunters-fight: true
   # Los bots no pueden poner bloques sólidos encima de un cofre (si no, el cofre no se abre)
   no-blocks-on-chests: true
+  # Los bots no pisotean la tierra arada (el Granjero la estropeaba al bajar por los escalones de su granja)
+  no-trample: true
 
 # Chat: sin mensajes de entrada, salida, muerte ni logros de los bots
 chat:

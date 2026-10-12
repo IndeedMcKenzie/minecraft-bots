@@ -187,7 +187,7 @@ A Paper plugin (`server-plugin/` folder) that helps the bots from inside the ser
 |---|---|
 | ⚡ Performance | Bots **don't spawn mobs** around them (except the hunter) and **don't count for sleeping** |
 | 🎣 Fishing | Whatever a bot catches **appears at its feet** instead of flying towards it (from some shores it hit the edge, fell into the water and was lost) |
-| 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out**. The **hunter** is the exception: monsters (creepers too) do attack and hurt it (`protection.hunters-fight`); falls don't hurt it either |
+| 🛡️ Protection | No damage from **monsters** (hits, arrows, creepers, witches, poison) or **falling**; monsters don't chase them. Tools **still wear out**. The **hunter** is the exception: monsters (creepers too) do attack and hurt it (`protection.hunters-fight`); falls don't hurt it either. **They don't trample farmland** (1.7.2; `protection.no-trample`): walking down the farm's terraces the farmer used to ruin it and had to till it again |
 | 🧱 Chests | Bots **can't place solid blocks on top of a chest** (a covered chest won't open; for a double chest one half is enough) |
 | 🌀 Teleport | Bots teleport **through the plugin**: no `/tp` and no "[Bot_X: Teleported…]" in your chat or the console. Without the plugin they fall back to `/tp` |
 | 🆘 Rescue | The server knows if a bot is in **lava, fire, suffocating or drowning**, or how long it has been **still** even across reconnects; the panel brings it home (`config.js` → `serverRescue`: miner and woodcutter, 4 min still away from home) |
@@ -255,6 +255,8 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 ### ⛏️ Miner
 - Picks the **most valuable ore** in sight (radius 64): diamond > emerald > gold > iron > coal > copper > lapis > redstone.
 - Skips ores its pickaxe can't harvest (e.g. diamond with a stone pickaxe).
+- If it can't reach an ore, it **skips that whole vein** for a while (the blocks of that ore touching it): they sit
+  behind the same obstacle (water, lava…) and trying them one by one wasted minutes.
 - Without a pickaxe it **goes home to get one**; if there is none, it waits (use 🎁 Dar herramienta).
 - When full, it first drops filler blocks (gravel, sand, dirt…) but keeps its stack of blocks for rescue pillars.
 
@@ -278,9 +280,12 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 ### 🗂️ Organizer (central warehouse)
 - Every **20 minutes** (or with 🗂️ Organizar ahora) it runs a round:
   1. `/give`s itself 4 chests and 4 signs (material to expand the warehouse).
-  2. Teleports to each bot's home and **takes everything except their spare tools**
-     (pickaxes, axes, hoes, shovels, swords, bows, rods, shears). It waits if that bot is storing at that moment.
-  3. Returns to the warehouse and puts each item **in its category chest**. Every deposit is verified and retried if the server rejects it.
+  2. Teleports to each bot's home and **takes everything except their spare tools** (in each home, the ones its
+     owner uses: axes at the woodcutter's, pickaxes at the miner's, swords and bows at the hunter's…; the rest, like
+     the shovels or rods that monsters drop, go to the warehouse). It waits if that bot is storing at that moment.
+  3. Returns to the warehouse and puts each item **in its category chest**. With the BotHelper plugin it knows which
+     chests are full and **doesn't even open them**: it goes straight to the ones with free slots. Every deposit is
+     verified and retried if the server rejects it.
   4. If a category has no chest or it's full, it **places a new chest with a sign on top** naming the category.
 - Chests are laid out **on a grid with aisles** and never touch (so they don't merge into double chests mixing categories).
 - **Unlimited warehouse** (`maxChests: 0`): when it runs out of room, the grid **grows in rings** up to
@@ -302,12 +307,16 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
   pickaxe (miner), hoe (farmer), fishing rod (fisher) and sword and bow (hunter). If one is missing it takes
   materials from the warehouse (**diamond**; else iron or stone; sticks or wood to make them; string for rods and
   bows, which the hunter brings back from spiders),
-  **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`.
+  **crafts it at a crafting table** and **drops it into that bot's chest** via `/tp`. Before crafting it uses any it
+  already has stored in the workshop, and with the BotHelper plugin it **counts the spares without visiting each
+  home** (the server reads the chests; it only goes there if that area isn't loaded).
 - **Enchanting:** before delivering it, it **enchants every tool** at an enchanting table with 15 bookshelves that
   it builds itself next to the workshop (it levels a 5×5 patch of natural ground with `/fill` and `/setblock`).
   It takes the level-30 option, so the game picks the enchantments at random (Efficiency, Fortune, Unbreaking…).
   Lapis comes from the warehouse (or `/give` if there is none) and experience from `/xp`. If anything fails it
-  delivers the tool unenchanted. Turn it off in ⚙️ Settings or in `config.js` → `enchanting.enabled`.
+  delivers the tool unenchanted. A pickaxe that comes out with **Silk Touch** is not delivered (the miner would get
+  ore blocks instead of diamonds or coal): it stays in the workshop (in case you want it) and another one is made.
+  Turn it off in ⚙️ Settings or in `config.js` → `enchanting.enabled`.
 - **Only goes to the warehouse when what it needs is there:** with the BotHelper plugin it knows what each chest
   holds (read every 30 s), so with nothing to smelt it doesn't travel, and otherwise it only opens those chests.
 - **Furnaces:** places **4 furnaces** next to its chest. When furnaces are free it takes **raw iron, gold and
@@ -344,7 +353,8 @@ Each plugin option can be turned off in `plugins/BotHelper/config.yml` (`protect
 ### 🆘 Getting unstuck (woodcutter & miner)
 - If a bot spends **90 s away from home without moving more than 3 blocks**, it's considered stuck:
   1. It climbs to the surface: stairs or towering with the pathfinder and, failing that, a **manual pillar**
-     (dig above, jump, place a block underneath). It aborts if there's lava or water above. Then it walks home.
+     (dig above, jump, place a block underneath). It aborts if there's lava or water above. Then it walks home
+     (or uses `/tp` if home is farther than `home.teleportDistance`, 150 blocks).
   2. If that fails, or it gets stuck again within 10 min: **`/tp` home**.
 - The stuck area (10 blocks) and the target it was chasing are **avoided for 30 minutes** so it doesn't repeat.
 - Afterwards it stores its inventory and keeps working.
@@ -405,7 +415,9 @@ username (`Bot_Minero`).
   same name and kick each other in a loop.
 - **Resources:** with all 7 bots the process uses about **400–450 MB of RAM** and around **half a CPU core**
   while everyone is busy. Path computation is the biggest cost (`performance.pathfinderTickMs`).
-- **If a bot dies**, it respawns at spawn or its bed and goes back to work (with `keepInventory` it loses nothing).
+- **If a bot dies**, it respawns at spawn or its bed (with `keepInventory` it loses nothing) and, if that is more than
+  64 blocks from its home, it **goes back home** first (otherwise it kept working next to spawn). The hunter doesn't:
+  it returns to the player or its area on its own.
   With the BotHelper 1.7.1 plugin the log shows the cause («💀 Causa: lava en (x, y, z)»), which isn't shown in chat.
 - **Frozen bots:** if a bot spends **10 minutes without progress** (its work got stuck waiting for something that never
   comes) or its connection ends up in a broken state (invalid position, dead without respawning, physics stopped), it

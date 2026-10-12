@@ -154,7 +154,7 @@ async function fetchFromWarehouse(bot, wants, label = 'Bot') {
           await sleep(120)
         } catch {}
       }
-      inventory.recordChest(chest, displayCat(chest.catKey), container.containerItems())
+      inventory.recordChest(chest, displayCat(chest.catKey), container.containerItems(), container.inventoryStart)
       try { container.close() } catch {}
       await sleep(300)
     } catch {}

@@ -20,7 +20,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.util.Vector;
@@ -40,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   experiencia) va directamente a su inventario.
  * - Vigilancia para el rescate: cuánto tiempo lleva cada bot sin moverse (aunque se reconecte) y si está
  *   en peligro (lava, fuego, asfixia, ahogándose). El panel decide si lo devuelve a casa.
+ * - No pisotean la tierra arada (1.7.2).
  */
 final class BotAssist implements Listener {
     private static final Set<Material> CHESTS = EnumSet.of(Material.CHEST, Material.TRAPPED_CHEST);
@@ -50,7 +53,7 @@ final class BotAssist implements Listener {
     private static final double MOVE_THRESHOLD = 2.0;
 
     private final BotHelper plugin;
-    private boolean guardChests, silence, magnet, mobLoot;
+    private boolean guardChests, silence, magnet, mobLoot, noTrample;
 
     // Por nombre de bot (sobrevive a las reconexiones): dónde estaba quieto y desde cuándo; último peligro
     private final Map<String, Location> anchor = new ConcurrentHashMap<>();
@@ -71,6 +74,7 @@ final class BotAssist implements Listener {
         silence = c.getBoolean("chat.silence-bots", true);
         magnet = c.getBoolean("magnet.enabled", true);
         mobLoot = c.getBoolean("magnet.mob-loot", true);
+        noTrample = c.getBoolean("protection.no-trample", true);
     }
 
     private boolean isBot(Player p) {
@@ -130,6 +134,19 @@ final class BotAssist implements Listener {
             e.setCancelled(true);
             plugin.getLogger().info(e.getPlayer().getName() + " iba a tapar el cofre en " + pos(placed.getRelative(BlockFace.DOWN).getLocation()) + ": anulado.");
         }
+    }
+
+    // ── Sin pisotear la tierra arada ─────────────────────────
+    // Al caer sobre tierra arada desde más de medio bloque, el juego la vuelve tierra normal y el cultivo salta. El
+    // Granjero baja por los escalones de su granja en terrazas y la pisoteaba a menudo (dos veces en 4 minutos el 12/10;
+    // luego tenía que volver a ararla y sembrarla). El juego lo avisa como un "interact PHYSICAL" sobre la tierra arada:
+    // a los bots se les anula (a los jugadores, no)
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onTrample(PlayerInteractEvent e) {
+        if (!noTrample || e.getAction() != Action.PHYSICAL || !isBot(e.getPlayer())) return;
+        Block b = e.getClickedBlock();
+        if (b != null && b.getType() == Material.FARMLAND) e.setCancelled(true);
     }
 
     // ── Silencio en el chat ──────────────────────────────────

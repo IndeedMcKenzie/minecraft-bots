@@ -7,10 +7,18 @@
 // ============================================================
 const fs = require('fs')
 const path = require('path')
+const cfg = require('../config')
 
 const FILE = path.join(__dirname, '..', 'data', 'almacen_inventario.json')
 
-let data = load() // { chests: { "x,y,z": { cat, items: { nombre: n }, t } }, lastScan }
+let data = load() // { chests: { "x,y,z": { cat, items: { nombre: n }, slots, t } }, lastScan }
+
+// Objetos por pila de cada objeto (64 casi todos; 16 los carteles o los huevos; 1 las herramientas)
+let itemData = null
+function stackSize(name) {
+  if (!itemData) { try { itemData = require('minecraft-data')(cfg.server.version).itemsByName } catch { itemData = {} } }
+  return (itemData[name] && itemData[name].stackSize) || 64
+}
 let saveTimer = null
 
 function load() {
@@ -58,13 +66,30 @@ const LIVE_FRESH_MS = 2 * 60 * 1000
 let liveAt = 0
 const isLive = () => Date.now() - liveAt < LIVE_FRESH_MS
 
-/** Sustituye todo el inventario por el contenido real leído por el plugin: [{ key: 'x,y,z', cat, items }]. */
+/** Sustituye todo el inventario por el contenido real leído por el plugin: [{ key: 'x,y,z', cat, items, slots }]. */
 function setLive(chests) {
   data.chests = {}
-  for (const c of chests) data.chests[c.key] = { cat: c.cat, items: c.items, t: Date.now() }
+  for (const c of chests) data.chests[c.key] = { cat: c.cat, items: c.items, slots: c.slots || null, t: Date.now() }
   liveAt = Date.now()
   data.lastScan = liveAt
   scheduleSave()
+}
+
+/**
+ * ¿Le quedan huecos libres a este cofre? true / false / null (no se sabe). Solo con el inventario en vivo (dato de hace
+ * ≤30 s, o de cuando un bot lo abrió después). Los huecos ocupados se calculan con las pilas llenas (lo que guarda el
+ * Organizador se junta en pilas), así que puede creer que hay sitio y no haberlo, nunca al revés: un cofre que da
+ * "lleno" lo está seguro. El Organizador lo usa para no abrir uno a uno los cofres llenos de una categoría.
+ * Las pilas a medias no cuentan como sitio: casi todos los cofres llenos tienen alguna (37 brotes, 20 palos…) y rellenarlas
+ * obligaba a abrir decenas de cofres para guardar un puñado de objetos.
+ */
+function hasRoomFor(block) {
+  if (!isLive()) return null
+  const c = data.chests[chestKey(block)]
+  if (!c || !c.slots) return null
+  let used = 0
+  for (const [name, n] of Object.entries(c.items)) used += Math.ceil(n / stackSize(name))
+  return used < c.slots
 }
 
 /** ¿Se sabe que este cofre tiene algo que cumple test? true / false / null (no se sabe). */
@@ -83,12 +108,17 @@ function anyChestHas(test, catOk = () => true) {
   return Object.values(data.chests).some(c => catOk(c.cat || '') && Object.keys(c.items).some(test))
 }
 
-/** Apunta el contenido de un cofre del almacén (bloque del cofre y lista de objetos de mineflayer). */
-function recordChest(block, cat, items) {
-  if (isLive()) return
+/**
+ * Apunta el contenido de un cofre del almacén (bloque del cofre, lista de objetos de mineflayer y sus huecos). También
+ * con el inventario en vivo: lo que ve el bot al abrirlo es lo más reciente (p. ej. que lo acaba de llenar) hasta que el
+ * plugin vuelva a leerlo.
+ */
+function recordChest(block, cat, items, slots = null) {
   const totals = {}
   for (const i of items) totals[i.name] = (totals[i.name] || 0) + i.count
-  data.chests[chestKey(block)] = { cat, items: totals, t: Date.now() }
+  const key = chestKey(block)
+  const prev = data.chests[key]
+  data.chests[key] = { cat, items: totals, slots: slots || (prev && prev.slots) || null, t: Date.now() }
   scheduleSave()
 }
 
@@ -131,4 +161,4 @@ function catsWith(itemName) {
   return [...new Set(Object.values(data.chests).filter(c => c.items[itemName]).map(c => c.cat).filter(Boolean))]
 }
 
-module.exports = { recordChest, finishScan, summary, catsWith, chestKey, setLive, isLive, chestHas, anyChestHas }
+module.exports = { recordChest, finishScan, summary, catsWith, chestKey, setLive, isLive, chestHas, anyChestHas, hasRoomFor }
